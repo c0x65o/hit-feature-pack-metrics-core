@@ -54,7 +54,7 @@ nav:
     showWhen: authenticated
     children:
       - id: metrics-core-definitions
-        label: Definitions
+        label: Catalog
         path: /metrics/definitions
         icon: BookOpen
         roles: [admin]
@@ -125,6 +125,11 @@ schema:
 # ─────────────────────────────────────────────────────────────────────────────
 api:
   routes:
+    - path: /api/metrics/catalog
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/catalog"
+      description: "Get compiled metrics catalog with live data coverage stats"
+
     - path: /api/metrics/definitions
       methods: [GET, POST]
       handler: "@hit/feature-pack-metrics-core/server/api/definitions"
