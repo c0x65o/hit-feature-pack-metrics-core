@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,6 +29,12 @@
       "import": "./dist/server/api/*.js",
       "require": "./dist/server/api/*.js",
       "default": "./dist/server/api/*.js"
+    },
+    "./server/lib/*": {
+      "types": "./dist/server/lib/*.d.ts",
+      "import": "./dist/server/lib/*.js",
+      "require": "./dist/server/lib/*.js",
+      "default": "./dist/server/lib/*.js"
     }
   },
   "files": [

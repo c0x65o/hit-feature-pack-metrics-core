@@ -3,13 +3,13 @@
 
 name: metrics-core
 version: 1.0.0
-description: A HIT feature pack
+description: Core metrics system: metric definitions, data sources, ingestion, and fast aggregation APIs
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTES - Frontend page routes
 # ─────────────────────────────────────────────────────────────────────────────
 routes:
-  - path: /metrics-core
+  - path: /metrics
     page: Dashboard
     roles: []
 
@@ -18,11 +18,11 @@ routes:
 # ─────────────────────────────────────────────────────────────────────────────
 nav:
   - id: metrics-core
-    label: metrics-core
-    path: /metrics-core
-    icon: Package
+    label: Metrics
+    path: /metrics
+    icon: BarChart3
     group: main
-    weight: 100
+    weight: 120
     showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -30,13 +30,50 @@ nav:
 # ─────────────────────────────────────────────────────────────────────────────
 schema:
   source: src/schema/metrics-core.ts
-  exports: []
+  exports:
+    - metricsMetricDefinitions
+    - metricsDataSources
+    - metricsSyncRuns
+    - metricsIngestBatches
+    - metricsIngestRowErrors
+    - metricsMetricPoints
+    - MetricsMetricDefinition
+    - InsertMetricsMetricDefinition
+    - MetricsDataSource
+    - InsertMetricsDataSource
+    - MetricsSyncRun
+    - InsertMetricsSyncRun
+    - MetricsIngestBatch
+    - InsertMetricsIngestBatch
+    - MetricsIngestRowError
+    - InsertMetricsIngestRowError
+    - MetricsMetricPoint
+    - InsertMetricsMetricPoint
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API ROUTES - Backend endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 api:
-  routes: []
+  routes:
+    - path: /api/metrics/definitions
+      methods: [GET, POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/definitions"
+      description: "List metric definitions (GET) or create a definition (POST)"
+
+    - path: /api/metrics/data-sources
+      methods: [GET, POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/data-sources"
+      description: "List data sources (GET) or create a data source (POST)"
+
+    - path: /api/metrics/ingest
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/ingest"
+      description: "Ingest metric points (upsert)"
+
+    - path: /api/metrics/query
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/query"
+      description: "Fast aggregated query over metric points (bucketing, grouping, filtering)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES
