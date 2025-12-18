@@ -15,6 +15,20 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function toIsoDateOnly(input: unknown): string | null {
+  if (!input) return null;
+  const d = input instanceof Date ? input : new Date(String(input));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+function toIsoDateTime(input: unknown): string | null {
+  if (!input) return null;
+  const d = input instanceof Date ? input : new Date(String(input));
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 type IngestorConfig = {
   id: string;
   label?: string;
@@ -222,9 +236,9 @@ async function computeProviderRow(cfg: IngestorConfig) {
       .where(and(eq(metricsMetricPoints.dataSourceId, dataSourceId), inArray(metricsMetricPoints.metricKey as any, cfg.metrics as any)) as any);
     const r = rows[0];
     pointsCount = Number(r?.c || 0);
-    firstPointDate = r?.minDate ? r.minDate.toISOString().slice(0, 10) : null;
-    lastPointDate = r?.maxDate ? r.maxDate.toISOString().slice(0, 10) : null;
-    lastUpdatedAt = r?.maxUpdated ? r.maxUpdated.toISOString() : null;
+    firstPointDate = toIsoDateOnly((r as any)?.minDate);
+    lastPointDate = toIsoDateOnly((r as any)?.maxDate);
+    lastUpdatedAt = toIsoDateTime((r as any)?.maxUpdated);
     dataSourcesCount = 1;
   } else if (connectorKey && Array.isArray(cfg.metrics) && cfg.metrics.length > 0) {
     // Aggregate across all data sources for this connector.
@@ -242,9 +256,9 @@ async function computeProviderRow(cfg: IngestorConfig) {
     const r = rows[0];
     dataSourcesCount = Number(r?.dsCount || 0);
     pointsCount = Number(r?.pCount || 0);
-    firstPointDate = r?.minDate ? r.minDate.toISOString().slice(0, 10) : null;
-    lastPointDate = r?.maxDate ? r.maxDate.toISOString().slice(0, 10) : null;
-    lastUpdatedAt = r?.maxUpdated ? r.maxUpdated.toISOString() : null;
+    firstPointDate = toIsoDateOnly((r as any)?.minDate);
+    lastPointDate = toIsoDateOnly((r as any)?.maxDate);
+    lastUpdatedAt = toIsoDateTime((r as any)?.maxUpdated);
   }
 
   // last batch
@@ -261,7 +275,7 @@ async function computeProviderRow(cfg: IngestorConfig) {
       .where(eq(metricsIngestBatches.dataSourceId, dataSourceId))
       .orderBy(sql`${metricsIngestBatches.processedAt} DESC NULLS LAST`)
       .limit(1);
-    if (b[0]?.processedAt) lastBatchAt = (b[0].processedAt as Date).toISOString();
+    if (b[0]?.processedAt) lastBatchAt = toIsoDateTime((b[0] as any).processedAt);
     if (b[0]?.fileName) lastBatchFile = String(b[0].fileName);
   }
 

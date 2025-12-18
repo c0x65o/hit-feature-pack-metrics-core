@@ -12,6 +12,22 @@ export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
+function toIsoDateOnly(input) {
+    if (!input)
+        return null;
+    const d = input instanceof Date ? input : new Date(String(input));
+    if (Number.isNaN(d.getTime()))
+        return null;
+    return d.toISOString().slice(0, 10);
+}
+function toIsoDateTime(input) {
+    if (!input)
+        return null;
+    const d = input instanceof Date ? input : new Date(String(input));
+    if (Number.isNaN(d.getTime()))
+        return null;
+    return d.toISOString();
+}
 function appRoot() {
     return process.cwd();
 }
@@ -185,9 +201,9 @@ async function computeProviderRow(cfg) {
             .where(and(eq(metricsMetricPoints.dataSourceId, dataSourceId), inArray(metricsMetricPoints.metricKey, cfg.metrics)));
         const r = rows[0];
         pointsCount = Number(r?.c || 0);
-        firstPointDate = r?.minDate ? r.minDate.toISOString().slice(0, 10) : null;
-        lastPointDate = r?.maxDate ? r.maxDate.toISOString().slice(0, 10) : null;
-        lastUpdatedAt = r?.maxUpdated ? r.maxUpdated.toISOString() : null;
+        firstPointDate = toIsoDateOnly(r?.minDate);
+        lastPointDate = toIsoDateOnly(r?.maxDate);
+        lastUpdatedAt = toIsoDateTime(r?.maxUpdated);
         dataSourcesCount = 1;
     }
     else if (connectorKey && Array.isArray(cfg.metrics) && cfg.metrics.length > 0) {
@@ -206,9 +222,9 @@ async function computeProviderRow(cfg) {
         const r = rows[0];
         dataSourcesCount = Number(r?.dsCount || 0);
         pointsCount = Number(r?.pCount || 0);
-        firstPointDate = r?.minDate ? r.minDate.toISOString().slice(0, 10) : null;
-        lastPointDate = r?.maxDate ? r.maxDate.toISOString().slice(0, 10) : null;
-        lastUpdatedAt = r?.maxUpdated ? r.maxUpdated.toISOString() : null;
+        firstPointDate = toIsoDateOnly(r?.minDate);
+        lastPointDate = toIsoDateOnly(r?.maxDate);
+        lastUpdatedAt = toIsoDateTime(r?.maxUpdated);
     }
     // last batch
     let lastBatchAt = null;
@@ -225,7 +241,7 @@ async function computeProviderRow(cfg) {
             .orderBy(sql `${metricsIngestBatches.processedAt} DESC NULLS LAST`)
             .limit(1);
         if (b[0]?.processedAt)
-            lastBatchAt = b[0].processedAt.toISOString();
+            lastBatchAt = toIsoDateTime(b[0].processedAt);
         if (b[0]?.fileName)
             lastBatchFile = String(b[0].fileName);
     }
