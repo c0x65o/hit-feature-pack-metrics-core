@@ -18,6 +18,12 @@ routes:
   - path: /metrics/data-sources
     page: DataSources
     roles: [admin]
+  - path: /metrics/ingestors
+    page: Ingestors
+    roles: [admin]
+  - path: /metrics/ingestors/[id]
+    page: IngestorDetail
+    roles: [admin]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -45,6 +51,13 @@ nav:
         icon: PlugZap
         roles: [admin]
         weight: 110
+        showWhen: authenticated
+      - id: metrics-core-ingestors
+        label: Ingestors
+        path: /metrics/ingestors
+        icon: PackageSearch
+        roles: [admin]
+        weight: 120
         showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
