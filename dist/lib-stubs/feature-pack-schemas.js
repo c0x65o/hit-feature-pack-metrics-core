@@ -1,4 +1,3 @@
-"use strict";
 /**
  * Stub for @/lib/feature-pack-schemas
  *
@@ -6,6 +5,6 @@
  * At runtime, the consuming application provides the actual implementation
  * via the generated lib/feature-pack-schemas.ts file.
  */
-// Re-export schema tables from this feature pack
-// Update this when you add tables to src/schema/metrics-core.ts
-// export { myTable } from '../schema/metrics-core';
+// Re-export schema tables from this feature pack.
+// At runtime this is provided by the consuming app; this exists so the pack can compile in isolation.
+export { metricsMetricDefinitions, metricsDataSources, metricsSyncRuns, metricsIngestBatches, metricsIngestRowErrors, metricsMetricPoints, } from '../schema/metrics-core';
