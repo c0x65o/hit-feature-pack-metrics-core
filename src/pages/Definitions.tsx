@@ -65,27 +65,56 @@ export function Definitions() {
         ) : items.length === 0 ? (
           <div className="text-sm text-muted-foreground">No definitions yet.</div>
         ) : (
-          <div className="space-y-2">
-            {items
-              .slice()
-              .sort((a, b) => a.key.localeCompare(b.key))
-              .map((d) => (
-                <div key={d.key} className="flex items-start justify-between gap-4 border-b py-2">
-                  <div>
-                    <div className="font-medium">{d.key}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {d.label} · {d.unit}
-                      {d.category ? ` · ${d.category}` : ''}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {d.pointsCount.toLocaleString()} point(s)
-                      {d.firstPointAt ? ` · first: ${new Date(d.firstPointAt).toISOString().slice(0, 10)}` : ' · first: —'}
-                      {d.lastPointAt ? ` · last: ${new Date(d.lastPointAt).toISOString().slice(0, 10)}` : ' · last: —'}
-                      {d.lastUpdatedAt ? ` · updated: ${new Date(d.lastUpdatedAt).toISOString().slice(0, 10)}` : ' · updated: —'}
-                    </div>
-                  </div>
-                </div>
-              ))}
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-3 pr-4 font-medium">Metric Key</th>
+                  <th className="py-3 pr-4 font-medium">Label</th>
+                  <th className="py-3 pr-4 font-medium">Unit</th>
+                  <th className="py-3 pr-4 font-medium">Category</th>
+                  <th className="py-3 pr-4 font-medium text-right">Points</th>
+                  <th className="py-3 pr-4 font-medium">First</th>
+                  <th className="py-3 pr-4 font-medium">Last</th>
+                  <th className="py-3 font-medium">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items
+                  .slice()
+                  .sort((a, b) => a.key.localeCompare(b.key))
+                  .map((d) => (
+                    <tr key={d.key} className="border-b hover:bg-muted/50 transition-colors">
+                      <td className="py-3 pr-4">
+                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{d.key}</code>
+                      </td>
+                      <td className="py-3 pr-4 font-medium">{d.label}</td>
+                      <td className="py-3 pr-4">
+                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          {d.unit}
+                        </span>
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground">{d.category || '—'}</td>
+                      <td className="py-3 pr-4 text-right tabular-nums">
+                        {d.pointsCount > 0 ? (
+                          <span className="text-green-600 dark:text-green-400 font-medium">{d.pointsCount.toLocaleString()}</span>
+                        ) : (
+                          <span className="text-muted-foreground">0</span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                        {d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                        {d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="py-3 text-muted-foreground tabular-nums">
+                        {d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>

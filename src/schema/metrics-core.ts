@@ -145,6 +145,33 @@ export const metricsIngestRowErrors = pgTable('metrics_ingest_row_errors', {
 });
 
 /**
+ * Metrics Links
+ * Global linking/metadata registry used by ingestors and tooling.
+ *
+ * Examples:
+ * - linkType="steam.app", linkId="276410", targetKind="project", targetId="ministry-of-broadcast"
+ * - linkType="metrics.field_mapper", linkId="ministry of broadcast", targetKind="project", targetId="ministry-of-broadcast",
+ *   metadata={ "steam_app_id": "276410" }
+ */
+export const metricsLinks = pgTable(
+  'metrics_links',
+  {
+    id: varchar('id', { length: 255 }).primaryKey(),
+    linkType: varchar('link_type', { length: 100 }).notNull(),
+    linkId: varchar('link_id', { length: 255 }).notNull(),
+    // Optional target: use ("none","") when not linked yet
+    targetKind: varchar('target_kind', { length: 50 }).notNull().default('none'),
+    targetId: varchar('target_id', { length: 255 }).notNull().default(''),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueLink: unique('metrics_links_unique').on(table.linkType, table.linkId, table.targetKind, table.targetId),
+  }),
+);
+
+/**
  * Metrics Metric Points
  * Normalized time-series points with full provenance and dimensions hashing for safe upserts.
  */
@@ -210,6 +237,9 @@ export type InsertMetricsIngestBatch = InferInsertModel<typeof metricsIngestBatc
 
 export type MetricsIngestRowError = InferSelectModel<typeof metricsIngestRowErrors>;
 export type InsertMetricsIngestRowError = InferInsertModel<typeof metricsIngestRowErrors>;
+
+export type MetricsLink = InferSelectModel<typeof metricsLinks>;
+export type InsertMetricsLink = InferInsertModel<typeof metricsLinks>;
 
 export type MetricsMetricPoint = InferSelectModel<typeof metricsMetricPoints>;
 export type InsertMetricsMetricPoint = InferInsertModel<typeof metricsMetricPoints>;

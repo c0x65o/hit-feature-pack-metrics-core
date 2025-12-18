@@ -7,4 +7,4 @@
  */
 // Re-export schema tables from this feature pack.
 // At runtime this is provided by the consuming app; this exists so the pack can compile in isolation.
-export { metricsMetricDefinitions, metricsDataSources, metricsSyncRuns, metricsIngestBatches, metricsIngestRowErrors, metricsMetricPoints, } from '../schema/metrics-core';
+export { metricsMetricDefinitions, metricsDataSources, metricsSyncRuns, metricsIngestBatches, metricsIngestRowErrors, metricsLinks, metricsMetricPoints, } from '../schema/metrics-core';

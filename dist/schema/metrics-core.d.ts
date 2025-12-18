@@ -1075,6 +1075,118 @@ export declare const metricsIngestRowErrors: import("drizzle-orm/pg-core").PgTab
     dialect: "pg";
 }>;
 /**
+ * Metrics Links
+ * Global linking/metadata registry used by ingestors and tooling.
+ *
+ * Examples:
+ * - linkType="steam.app", linkId="276410", targetKind="project", targetId="ministry-of-broadcast"
+ * - linkType="metrics.field_mapper", linkId="ministry of broadcast", targetKind="project", targetId="ministry-of-broadcast",
+ *   metadata={ "steam_app_id": "276410" }
+ */
+export declare const metricsLinks: import("drizzle-orm/pg-core").PgTableWithColumns<{
+    name: "metrics_links";
+    schema: undefined;
+    columns: {
+        id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "id";
+            tableName: "metrics_links";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        linkType: import("drizzle-orm/pg-core").PgColumn<{
+            name: "link_type";
+            tableName: "metrics_links";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        linkId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "link_id";
+            tableName: "metrics_links";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        targetKind: import("drizzle-orm/pg-core").PgColumn<{
+            name: "target_kind";
+            tableName: "metrics_links";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        targetId: import("drizzle-orm/pg-core").PgColumn<{
+            name: "target_id";
+            tableName: "metrics_links";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        metadata: import("drizzle-orm/pg-core").PgColumn<{
+            name: "metadata";
+            tableName: "metrics_links";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: unknown;
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        createdAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "created_at";
+            tableName: "metrics_links";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        updatedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "updated_at";
+            tableName: "metrics_links";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+    };
+    dialect: "pg";
+}>;
+/**
  * Metrics Metric Points
  * Normalized time-series points with full provenance and dimensions hashing for safe upserts.
  */
@@ -1263,6 +1375,8 @@ export type MetricsIngestBatch = InferSelectModel<typeof metricsIngestBatches>;
 export type InsertMetricsIngestBatch = InferInsertModel<typeof metricsIngestBatches>;
 export type MetricsIngestRowError = InferSelectModel<typeof metricsIngestRowErrors>;
 export type InsertMetricsIngestRowError = InferInsertModel<typeof metricsIngestRowErrors>;
+export type MetricsLink = InferSelectModel<typeof metricsLinks>;
+export type InsertMetricsLink = InferInsertModel<typeof metricsLinks>;
 export type MetricsMetricPoint = InferSelectModel<typeof metricsMetricPoints>;
 export type InsertMetricsMetricPoint = InferInsertModel<typeof metricsMetricPoints>;
 //# sourceMappingURL=metrics-core.d.ts.map

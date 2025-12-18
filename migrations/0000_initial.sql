@@ -100,6 +100,20 @@ CREATE TABLE IF NOT EXISTS metrics_ingest_row_errors (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS metrics_links (
+  id VARCHAR(255) PRIMARY KEY,
+  link_type VARCHAR(100) NOT NULL,
+  link_id VARCHAR(255) NOT NULL,
+  target_kind VARCHAR(50) NOT NULL DEFAULT 'none',
+  target_id VARCHAR(255) NOT NULL DEFAULT '',
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT metrics_links_unique UNIQUE (link_type, link_id, target_kind, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_metrics_links_type_id ON metrics_links(link_type, link_id);
+
 CREATE TABLE IF NOT EXISTS metrics_metric_points (
   id VARCHAR(255) PRIMARY KEY,
   entity_kind VARCHAR(50) NOT NULL,

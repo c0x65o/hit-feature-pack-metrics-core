@@ -14,5 +14,6 @@ export {
   metricsSyncRuns,
   metricsIngestBatches,
   metricsIngestRowErrors,
+  metricsLinks,
   metricsMetricPoints,
 } from '../schema/metrics-core';
