@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricDefinitions } from '@/lib/feature-pack-schemas';
-import { extractUserFromRequest } from '../auth';
 import { eq } from 'drizzle-orm';
+import { getAuthContext } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,8 +18,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const user = extractUserFromRequest(request);
-  if (!user) return jsonError('Unauthorized', 401);
+  const auth = getAuthContext(request);
+  if (!auth) return jsonError('Unauthorized', 401);
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return jsonError('Invalid JSON body', 400);

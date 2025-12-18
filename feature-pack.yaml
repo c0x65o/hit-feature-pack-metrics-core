@@ -12,6 +12,12 @@ routes:
   - path: /metrics
     page: Dashboard
     roles: []
+  - path: /metrics/definitions
+    page: Definitions
+    roles: []
+  - path: /metrics/data-sources
+    page: DataSources
+    roles: []
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -24,6 +30,19 @@ nav:
     group: main
     weight: 120
     showWhen: authenticated
+    children:
+      - id: metrics-core-definitions
+        label: Definitions
+        path: /metrics/definitions
+        icon: BookOpen
+        weight: 100
+        showWhen: authenticated
+      - id: metrics-core-data-sources
+        label: Data Sources
+        path: /metrics/data-sources
+        icon: PlugZap
+        weight: 110
+        showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCHEMA - Drizzle ORM table definitions
