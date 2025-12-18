@@ -60,9 +60,6 @@ export declare function GET(request: NextRequest, ctx: {
                 group: string | null;
             }>;
             fileNames: string[];
-            computed?: {
-                revenueUsdAllTime?: string | null;
-            };
         }[];
         mapping: {
             kind: string;

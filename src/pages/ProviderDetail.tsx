@@ -13,7 +13,6 @@ type ProviderPayload = {
       projectSlug: string | null;
       steamAppIds: Array<{ steamAppId: string; group: string | null }>;
       fileNames: string[];
-      computed?: { revenueUsdAllTime?: string | null };
     }>;
     mapping: null | { kind: 'metrics_links'; linkType: string | null; key: string | null };
     integration: null | {
@@ -42,7 +41,6 @@ export function ProviderDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<ProviderPayload | null>(null);
-  const [includeComputed, setIncludeComputed] = React.useState(false);
 
   React.useEffect(() => {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -55,9 +53,7 @@ export function ProviderDetail() {
     setLoading(true);
     setError(null);
     try {
-      const url = new URL(`/api/metrics/providers/${encodeURIComponent(id)}`, window.location.origin);
-      if (includeComputed) url.searchParams.set('includeComputed', '1');
-      const res = await fetch(url.toString(), { method: 'GET' });
+      const res = await fetch(`/api/metrics/providers/${encodeURIComponent(id)}`, { method: 'GET' });
       const json = (await res.json().catch(() => null)) as any;
       if (!res.ok) throw new Error(json?.error || 'Failed to load provider');
       setData(json as ProviderPayload);
@@ -71,7 +67,7 @@ export function ProviderDetail() {
   React.useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, includeComputed]);
+  }, [id]);
 
   const provider = data?.provider;
   const artifacts = data?.artifacts;
@@ -151,6 +147,28 @@ export function ProviderDetail() {
         )}
       </Card>
 
+      <Card title="Metrics">
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : !provider ? (
+          <div className="text-sm text-muted-foreground">Provider not found.</div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="default">{Array.isArray(provider.metrics) ? provider.metrics.length : 0} metrics</Badge>
+            </div>
+            {Array.isArray(provider.metrics) && provider.metrics.length > 0 ? (
+              <details>
+                <summary className="text-sm cursor-pointer">Show metric keys</summary>
+                <pre className="text-xs overflow-auto mt-2">{provider.metrics.join('\n')}</pre>
+              </details>
+            ) : (
+              <div className="text-sm text-muted-foreground">No metric keys declared on this provider.</div>
+            )}
+          </div>
+        )}
+      </Card>
+
       <Card title="Linked projects (steam.app → project)">
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
@@ -160,31 +178,12 @@ export function ProviderDetail() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setIncludeComputed((v) => !v)}
-                disabled={loading}
-              >
-                {includeComputed ? 'Hide computed totals' : 'Compute totals'}
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                Computes totals on-demand (so we don’t do heavy work on every page load).
-              </span>
-            </div>
-
             <div className="space-y-2">
               {linkedProjects.map((p) => (
                 <div key={p.projectId} className="border rounded-md p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="info">{p.projectSlug || p.projectId}</Badge>
                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{p.projectId}</code>
-                    {includeComputed ? (
-                      <Badge variant="default">
-                        revenue_usd total: {p.computed?.revenueUsdAllTime ?? '—'}
-                      </Badge>
-                    ) : null}
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">
                     Steam app ids: {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}

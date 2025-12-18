@@ -112,9 +112,6 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   const auth = getAuthContext(request);
   if (!auth) return jsonError('Unauthorized', 401);
 
-  const url = new URL(request.url);
-  const includeComputed = url.searchParams.get('includeComputed') === '1';
-
   const id = ctx.params.id;
   const p = ingestorYamlPath(id);
   if (!fs.existsSync(p)) return jsonError(`Unknown provider/ingestor: ${id}`, 404);
@@ -138,7 +135,6 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     projectSlug: string | null;
     steamAppIds: Array<{ steamAppId: string; group: string | null }>;
     fileNames: string[];
-    computed?: { revenueUsdAllTime?: string | null };
   }> = [];
 
   if (cfg.backfill?.enabled && cfg.backfill.kind === 'directory' && mapping?.kind === 'metrics_links') {
@@ -200,21 +196,6 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
         }
 
         linkedProjects = Array.from(byProject.values()).sort((a, b) => (a.projectSlug || a.projectId).localeCompare(b.projectSlug || b.projectId));
-
-        if (includeComputed && linkedProjects.length > 0) {
-          // Compute total revenue for each linked project (all-time).
-          // Assumes ingestion is scoped to entity_kind='project' for this provider.
-          for (const lp of linkedProjects) {
-            const rows = await db
-              .select({
-                sum: sql<string | null>`sum(${metricsMetricPoints.value})`.as('sum'),
-              })
-              .from(metricsMetricPoints)
-              .where(and(eq(metricsMetricPoints.entityKind, 'project'), eq(metricsMetricPoints.entityId, lp.projectId), eq(metricsMetricPoints.metricKey, 'revenue_usd')) as any);
-            const sum = (rows?.[0] as any)?.sum ?? null;
-            (lp as any).computed = { revenueUsdAllTime: sum };
-          }
-        }
       }
     }
   }

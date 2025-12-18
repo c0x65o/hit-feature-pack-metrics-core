@@ -8,6 +8,7 @@ type ProviderRow = {
   label: string;
   description: string | null;
   metricsCount: number;
+  // provider.metrics is not returned by the list endpoint today; we show count only on the list.
   uploadEnabled: boolean;
   backfillEnabled: boolean;
   dataSourceId: string | null;
@@ -95,7 +96,7 @@ export function Providers() {
                   <div className="text-sm text-muted-foreground truncate">{p.description || p.id}</div>
                   <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-2">
                     <span>
-                      {p.uploadEnabled ? 'Upload' : 'No upload'} · {p.backfillEnabled ? 'Backfill' : 'No backfill'} · {p.metricsCount} metric(s)
+                      {p.uploadEnabled ? 'Upload' : 'No upload'} · {p.backfillEnabled ? 'Backfill' : 'No backfill'}
                     </span>
                     <span>· files: {p.backfillFilesCount}</span>
                     {p.backfillTaskName ? <span>· task: {p.backfillTaskName}</span> : <span>· task: —</span>}
@@ -112,6 +113,7 @@ export function Providers() {
                         )
                       : <Badge variant="default">No integration</Badge>}
                     {p.stats.dataSourcesCount !== null ? <Badge variant="default">{p.stats.dataSourcesCount} sources</Badge> : null}
+                    <Badge variant="default">{p.metricsCount} metrics</Badge>
                     {p.stats.pointsCount !== null ? <Badge variant="info">{p.stats.pointsCount} points</Badge> : <Badge variant="default">Points —</Badge>}
                     {p.stats.lastPointDate ? <Badge variant="default">Last: {p.stats.lastPointDate}</Badge> : null}
                   </div>
