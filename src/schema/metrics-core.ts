@@ -172,6 +172,28 @@ export const metricsLinks = pgTable(
 );
 
 /**
+ * Metrics Partner Credentials
+ * Stores credentials + verification status for integration partners configured via `.hit/metrics/partners/*.yaml`.
+ *
+ * The partner "definition" lives in YAML; this table stores the per-app configured values.
+ */
+export const metricsPartnerCredentials = pgTable('metrics_partner_credentials', {
+  // partner id (from YAML), e.g. "youtube-data-api", "steam-web-api"
+  id: varchar('id', { length: 100 }).primaryKey(),
+
+  enabled: boolean('enabled').notNull().default(true),
+  credentials: jsonb('credentials').notNull().default({}),
+
+  lastVerifiedAt: timestamp('last_verified_at'),
+  lastVerifyOk: boolean('last_verify_ok'),
+  lastVerifyMessage: text('last_verify_message'),
+  lastVerifyDetails: jsonb('last_verify_details'),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/**
  * Metrics Metric Points
  * Normalized time-series points with full provenance and dimensions hashing for safe upserts.
  */
@@ -240,6 +262,9 @@ export type InsertMetricsIngestRowError = InferInsertModel<typeof metricsIngestR
 
 export type MetricsLink = InferSelectModel<typeof metricsLinks>;
 export type InsertMetricsLink = InferInsertModel<typeof metricsLinks>;
+
+export type MetricsPartnerCredential = InferSelectModel<typeof metricsPartnerCredentials>;
+export type InsertMetricsPartnerCredential = InferInsertModel<typeof metricsPartnerCredentials>;
 
 export type MetricsMetricPoint = InferSelectModel<typeof metricsMetricPoints>;
 export type InsertMetricsMetricPoint = InferInsertModel<typeof metricsMetricPoints>;

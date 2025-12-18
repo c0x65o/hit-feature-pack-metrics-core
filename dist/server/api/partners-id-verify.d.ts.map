@@ -1,0 +1,1 @@
+{"version":3,"file":"partners-id-verify.d.ts","sourceRoot":"","sources":["../../../src/server/api/partners-id-verify.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,WAAW,EAAE,YAAY,EAAE,MAAM,aAAa,CAAC;AAQxD,eAAO,MAAM,OAAO,kBAAkB,CAAC;AACvC,eAAO,MAAM,OAAO,WAAW,CAAC;AAahC,wBAAsB,IAAI,CAAC,OAAO,EAAE,WAAW,EAAE,GAAG,EAAE;IAAE,MAAM,EAAE;QAAE,EAAE,EAAE,MAAM,CAAA;KAAE,CAAA;CAAE;;;;;;IA6F/E"}

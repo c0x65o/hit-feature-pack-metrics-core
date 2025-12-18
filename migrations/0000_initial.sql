@@ -114,6 +114,18 @@ CREATE TABLE IF NOT EXISTS metrics_links (
 
 CREATE INDEX IF NOT EXISTS idx_metrics_links_type_id ON metrics_links(link_type, link_id);
 
+CREATE TABLE IF NOT EXISTS metrics_partner_credentials (
+  id VARCHAR(100) PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  credentials JSONB NOT NULL DEFAULT '{}'::jsonb,
+  last_verified_at TIMESTAMPTZ,
+  last_verify_ok BOOLEAN,
+  last_verify_message TEXT,
+  last_verify_details JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS metrics_metric_points (
   id VARCHAR(255) PRIMARY KEY,
   entity_kind VARCHAR(50) NOT NULL,

@@ -15,5 +15,6 @@ export {
   metricsIngestBatches,
   metricsIngestRowErrors,
   metricsLinks,
+  metricsPartnerCredentials,
   metricsMetricPoints,
 } from '../schema/metrics-core';

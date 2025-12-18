@@ -1187,6 +1187,127 @@ export declare const metricsLinks: import("drizzle-orm/pg-core").PgTableWithColu
     dialect: "pg";
 }>;
 /**
+ * Metrics Partner Credentials
+ * Stores credentials + verification status for integration partners configured via `.hit/metrics/partners/*.yaml`.
+ *
+ * The partner "definition" lives in YAML; this table stores the per-app configured values.
+ */
+export declare const metricsPartnerCredentials: import("drizzle-orm/pg-core").PgTableWithColumns<{
+    name: "metrics_partner_credentials";
+    schema: undefined;
+    columns: {
+        id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "id";
+            tableName: "metrics_partner_credentials";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        enabled: import("drizzle-orm/pg-core").PgColumn<{
+            name: "enabled";
+            tableName: "metrics_partner_credentials";
+            dataType: "boolean";
+            columnType: "PgBoolean";
+            data: boolean;
+            driverParam: boolean;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        credentials: import("drizzle-orm/pg-core").PgColumn<{
+            name: "credentials";
+            tableName: "metrics_partner_credentials";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: unknown;
+            driverParam: unknown;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        lastVerifiedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "last_verified_at";
+            tableName: "metrics_partner_credentials";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        lastVerifyOk: import("drizzle-orm/pg-core").PgColumn<{
+            name: "last_verify_ok";
+            tableName: "metrics_partner_credentials";
+            dataType: "boolean";
+            columnType: "PgBoolean";
+            data: boolean;
+            driverParam: boolean;
+            notNull: false;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        lastVerifyMessage: import("drizzle-orm/pg-core").PgColumn<{
+            name: "last_verify_message";
+            tableName: "metrics_partner_credentials";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        lastVerifyDetails: import("drizzle-orm/pg-core").PgColumn<{
+            name: "last_verify_details";
+            tableName: "metrics_partner_credentials";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: unknown;
+            driverParam: unknown;
+            notNull: false;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        createdAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "created_at";
+            tableName: "metrics_partner_credentials";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        updatedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "updated_at";
+            tableName: "metrics_partner_credentials";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+    };
+    dialect: "pg";
+}>;
+/**
  * Metrics Metric Points
  * Normalized time-series points with full provenance and dimensions hashing for safe upserts.
  */
@@ -1377,6 +1498,8 @@ export type MetricsIngestRowError = InferSelectModel<typeof metricsIngestRowErro
 export type InsertMetricsIngestRowError = InferInsertModel<typeof metricsIngestRowErrors>;
 export type MetricsLink = InferSelectModel<typeof metricsLinks>;
 export type InsertMetricsLink = InferInsertModel<typeof metricsLinks>;
+export type MetricsPartnerCredential = InferSelectModel<typeof metricsPartnerCredentials>;
+export type InsertMetricsPartnerCredential = InferInsertModel<typeof metricsPartnerCredentials>;
 export type MetricsMetricPoint = InferSelectModel<typeof metricsMetricPoints>;
 export type InsertMetricsMetricPoint = InferInsertModel<typeof metricsMetricPoints>;
 //# sourceMappingURL=metrics-core.d.ts.map

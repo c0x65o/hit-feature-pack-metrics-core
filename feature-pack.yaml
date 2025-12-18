@@ -24,6 +24,12 @@ routes:
   - path: /metrics/ingestors/[id]
     page: IngestorDetail
     roles: [admin]
+  - path: /metrics/integrations
+    page: Integrations
+    roles: [admin]
+  - path: /metrics/integrations/[id]
+    page: IntegrationDetail
+    roles: [admin]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -59,6 +65,13 @@ nav:
         roles: [admin]
         weight: 120
         showWhen: authenticated
+      - id: metrics-core-integrations
+        label: Integrations
+        path: /metrics/integrations
+        icon: Key
+        roles: [admin]
+        weight: 130
+        showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCHEMA - Drizzle ORM table definitions
@@ -72,6 +85,7 @@ schema:
     - metricsIngestBatches
     - metricsIngestRowErrors
     - metricsLinks
+    - metricsPartnerCredentials
     - metricsMetricPoints
     - MetricsMetricDefinition
     - InsertMetricsMetricDefinition
@@ -85,6 +99,8 @@ schema:
     - InsertMetricsIngestRowError
     - MetricsLink
     - InsertMetricsLink
+    - MetricsPartnerCredential
+    - InsertMetricsPartnerCredential
     - MetricsMetricPoint
     - InsertMetricsMetricPoint
 
@@ -112,6 +128,21 @@ api:
       methods: [POST]
       handler: "@hit/feature-pack-metrics-core/server/api/query"
       description: "Fast aggregated query over metric points (bucketing, grouping, filtering)"
+
+    - path: /api/metrics/partners
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/partners"
+      description: "List integration partners (definitions + configured status)"
+
+    - path: /api/metrics/partners/[id]
+      methods: [GET, PUT, DELETE]
+      handler: "@hit/feature-pack-metrics-core/server/api/partners-id"
+      description: "Get/update/delete integration partner credentials"
+
+    - path: /api/metrics/partners/[id]/verify
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/partners-id-verify"
+      description: "Verify integration partner credentials using configured verify action"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES

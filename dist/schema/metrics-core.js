@@ -152,6 +152,24 @@ export const metricsLinks = pgTable('metrics_links', {
     uniqueLink: unique('metrics_links_unique').on(table.linkType, table.linkId, table.targetKind, table.targetId),
 }));
 /**
+ * Metrics Partner Credentials
+ * Stores credentials + verification status for integration partners configured via `.hit/metrics/partners/*.yaml`.
+ *
+ * The partner "definition" lives in YAML; this table stores the per-app configured values.
+ */
+export const metricsPartnerCredentials = pgTable('metrics_partner_credentials', {
+    // partner id (from YAML), e.g. "youtube-data-api", "steam-web-api"
+    id: varchar('id', { length: 100 }).primaryKey(),
+    enabled: boolean('enabled').notNull().default(true),
+    credentials: jsonb('credentials').notNull().default({}),
+    lastVerifiedAt: timestamp('last_verified_at'),
+    lastVerifyOk: boolean('last_verify_ok'),
+    lastVerifyMessage: text('last_verify_message'),
+    lastVerifyDetails: jsonb('last_verify_details'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+/**
  * Metrics Metric Points
  * Normalized time-series points with full provenance and dimensions hashing for safe upserts.
  */
