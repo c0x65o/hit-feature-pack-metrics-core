@@ -18,6 +18,9 @@ routes:
   - path: /metrics/data-sources
     page: DataSources
     roles: []
+  - path: /metrics/uploads/steam-sales
+    page: SteamSalesUpload
+    roles: []
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -42,6 +45,12 @@ nav:
         path: /metrics/data-sources
         icon: PlugZap
         weight: 110
+        showWhen: authenticated
+      - id: metrics-core-upload-steam-sales
+        label: Steam Sales Upload
+        path: /metrics/uploads/steam-sales
+        icon: Upload
+        weight: 120
         showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
