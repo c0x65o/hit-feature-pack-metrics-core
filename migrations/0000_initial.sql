@@ -1,0 +1,2 @@
+-- Initial schema for metrics-core feature pack
+-- Add your CREATE TABLE statements here

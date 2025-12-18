@@ -1,0 +1,68 @@
+{
+  "name": "@hit/feature-pack-metrics-core",
+  "version": "1.0.0",
+  "description": "A HIT feature pack",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./pages/*": {
+      "types": "./dist/pages/*.d.ts",
+      "import": "./dist/pages/*.js",
+      "require": "./dist/pages/*.js",
+      "default": "./dist/pages/*.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/metrics-core.d.ts",
+      "import": "./dist/schema/metrics-core.js",
+      "require": "./dist/schema/metrics-core.js",
+      "default": "./dist/schema/metrics-core.js"
+    },
+    "./server/api/*": {
+      "types": "./dist/server/api/*.d.ts",
+      "import": "./dist/server/api/*.js",
+      "require": "./dist/server/api/*.js",
+      "default": "./dist/server/api/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "feature-pack.yaml"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@hit/ui-kit": "*",
+    "react": "^18.0.0 || ^19.0.0",
+    "next": "^14.0.0 || ^15.0.0",
+    "@hit/sdk": "*",
+    "lucide-react": ">=0.263.0",
+    "drizzle-orm": ">=0.30.0"
+  },
+  "devDependencies": {
+    "@hit/sdk": "file:../../hit-sdks/hit-sdk-typescript",
+    "@hit/ui-kit": "file:../hit-ui-kit",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "drizzle-orm": "^0.30.0",
+    "lucide-react": "^0.460.0",
+    "typescript": "^5.0.0",
+    "next": "^14.2.5"
+  },
+  "keywords": [
+    "hit",
+    "feature-pack",
+    "metrics-core"
+  ],
+  "license": "MIT"
+}

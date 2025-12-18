@@ -1,0 +1,49 @@
+# Feature Pack: metrics-core
+# A HIT feature pack
+
+name: metrics-core
+version: 1.0.0
+description: A HIT feature pack
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTES - Frontend page routes
+# ─────────────────────────────────────────────────────────────────────────────
+routes:
+  - path: /metrics-core
+    page: Dashboard
+    roles: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NAVIGATION - Sidebar/topbar items
+# ─────────────────────────────────────────────────────────────────────────────
+nav:
+  - id: metrics-core
+    label: metrics-core
+    path: /metrics-core
+    icon: Package
+    group: main
+    weight: 100
+    showWhen: authenticated
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEMA - Drizzle ORM table definitions
+# ─────────────────────────────────────────────────────────────────────────────
+schema:
+  source: src/schema/metrics-core.ts
+  exports: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API ROUTES - Backend endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+api:
+  routes: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEPENDENCIES
+# ─────────────────────────────────────────────────────────────────────────────
+requires:
+  modules: []
+
+dependencies:
+  feature_packs:
+    - name: dashboard-shell
