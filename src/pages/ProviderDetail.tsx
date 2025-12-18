@@ -8,6 +8,13 @@ type ProviderPayload = {
   artifacts: {
     backfillFiles: string[];
     mappingMissing: string[];
+    linkedProjects?: Array<{
+      projectId: string;
+      projectSlug: string | null;
+      steamAppIds: Array<{ steamAppId: string; group: string | null }>;
+      fileNames: string[];
+      computed?: { revenueUsdAllTime?: string | null };
+    }>;
     mapping: null | { kind: 'metrics_links'; linkType: string | null; key: string | null };
     integration: null | {
       partnerId: string;
@@ -35,6 +42,7 @@ export function ProviderDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<ProviderPayload | null>(null);
+  const [includeComputed, setIncludeComputed] = React.useState(false);
 
   React.useEffect(() => {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -47,7 +55,9 @@ export function ProviderDetail() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/metrics/providers/${encodeURIComponent(id)}`, { method: 'GET' });
+      const url = new URL(`/api/metrics/providers/${encodeURIComponent(id)}`, window.location.origin);
+      if (includeComputed) url.searchParams.set('includeComputed', '1');
+      const res = await fetch(url.toString(), { method: 'GET' });
       const json = (await res.json().catch(() => null)) as any;
       if (!res.ok) throw new Error(json?.error || 'Failed to load provider');
       setData(json as ProviderPayload);
@@ -61,7 +71,7 @@ export function ProviderDetail() {
   React.useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, includeComputed]);
 
   const provider = data?.provider;
   const artifacts = data?.artifacts;
@@ -69,6 +79,7 @@ export function ProviderDetail() {
   const mappingOk = artifacts ? artifacts.mappingMissing.length === 0 : null;
   const backfillTask = artifacts?.tasks?.backfill || null;
   const syncTask = artifacts?.tasks?.sync || null;
+  const linkedProjects = artifacts?.linkedProjects || [];
 
   return (
     <div className="p-6 space-y-6">
@@ -136,6 +147,52 @@ export function ProviderDetail() {
                 ) : null}
               </div>
             ) : null}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Linked projects (steam.app → project)">
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : linkedProjects.length === 0 ? (
+          <div className="text-sm text-muted-foreground">
+            No linked projects found. Expected <code>metrics_links</code> rows with <code>link_type="steam.app"</code> linking steam_app_id → project.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIncludeComputed((v) => !v)}
+                disabled={loading}
+              >
+                {includeComputed ? 'Hide computed totals' : 'Compute totals'}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Computes totals on-demand (so we don’t do heavy work on every page load).
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              {linkedProjects.map((p) => (
+                <div key={p.projectId} className="border rounded-md p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="info">{p.projectSlug || p.projectId}</Badge>
+                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{p.projectId}</code>
+                    {includeComputed ? (
+                      <Badge variant="default">
+                        revenue_usd total: {p.computed?.revenueUsdAllTime ?? '—'}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Steam app ids: {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">Files: {p.fileNames.length}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </Card>

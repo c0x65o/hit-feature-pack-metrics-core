@@ -10,6 +10,7 @@ type MetricCatalogItem = {
   category?: string;
   description?: string;
   rollup_strategy?: 'sum' | 'avg' | 'min' | 'max' | 'last';
+  time_kind?: 'timeseries' | 'realtime' | 'none';
   default_granularity?: 'hourly' | 'daily' | 'weekly' | 'monthly';
   allowed_granularities?: Array<'hourly' | 'daily' | 'weekly' | 'monthly'>;
   owner?: { kind: 'feature_pack' | 'app' | 'user'; id: string };
@@ -260,7 +261,15 @@ export function Definitions() {
                       </td>
                       <td className="py-3 pr-4 text-muted-foreground">{d.rollup_strategy || '—'}</td>
                       <td className="py-3 pr-4 text-muted-foreground">
-                        {d.default_granularity ? (
+                        {d.time_kind === 'realtime' ? (
+                          <span className="inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300">
+                            realtime
+                          </span>
+                        ) : d.time_kind === 'none' ? (
+                          <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+                            n/a
+                          </span>
+                        ) : d.default_granularity ? (
                           <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
                             {d.default_granularity}
                             {Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (

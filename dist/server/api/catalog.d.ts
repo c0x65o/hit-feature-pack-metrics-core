@@ -8,6 +8,7 @@ type MetricStatus = {
     category?: string;
     description?: string;
     rollup_strategy?: string;
+    time_kind?: 'timeseries' | 'realtime' | 'none';
     default_granularity?: string;
     allowed_granularities?: string[];
     owner?: {

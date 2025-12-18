@@ -52,6 +52,18 @@ export declare function GET(request: NextRequest, ctx: {
     artifacts: {
         backfillFiles: string[];
         mappingMissing: string[];
+        linkedProjects: {
+            projectId: string;
+            projectSlug: string | null;
+            steamAppIds: Array<{
+                steamAppId: string;
+                group: string | null;
+            }>;
+            fileNames: string[];
+            computed?: {
+                revenueUsdAllTime?: string | null;
+            };
+        }[];
         mapping: {
             kind: string;
             linkType: string | null;
@@ -60,7 +72,7 @@ export declare function GET(request: NextRequest, ctx: {
         integration: {
             partnerId: string;
             requiredFields: string[];
-            configured: boolean;
+            configured: any;
             enabled: any;
             missingFields: string[];
         } | null;

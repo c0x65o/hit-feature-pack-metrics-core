@@ -112,6 +112,9 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   const auth = getAuthContext(request);
   if (!auth) return jsonError('Unauthorized', 401);
 
+  const url = new URL(request.url);
+  const includeComputed = url.searchParams.get('includeComputed') === '1';
+
   const id = ctx.params.id;
   const p = ingestorYamlPath(id);
   if (!fs.existsSync(p)) return jsonError(`Unknown provider/ingestor: ${id}`, 404);
@@ -130,6 +133,13 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   let mappingMissing: string[] = [];
   const mappingLinkType = mapping?.kind === 'metrics_links' ? mapping.link_type || null : null;
   const mappingKey = mapping?.kind === 'metrics_links' ? mapping.key || 'exact_filename' : null;
+  let linkedProjects: Array<{
+    projectId: string;
+    projectSlug: string | null;
+    steamAppIds: Array<{ steamAppId: string; group: string | null }>;
+    fileNames: string[];
+    computed?: { revenueUsdAllTime?: string | null };
+  }> = [];
 
   if (cfg.backfill?.enabled && cfg.backfill.kind === 'directory' && mapping?.kind === 'metrics_links') {
     const validate = cfg.backfill.validate_mappings !== false;
@@ -137,12 +147,75 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     const key = mapping.key || 'exact_filename';
     if (validate && linkType && key === 'exact_filename' && fileNames.length > 0) {
       const existing = await db
-        .select({ linkId: metricsLinks.linkId })
+        .select({ linkId: metricsLinks.linkId, metadata: metricsLinks.metadata })
         .from(metricsLinks)
         .where(and(eq(metricsLinks.linkType, linkType), inArray(metricsLinks.linkId as any, fileNames as any)) as any)
         .limit(5000);
       const have = new Set(existing.map((r: { linkId: string }) => r.linkId));
       mappingMissing = fileNames.filter((n) => !have.has(n));
+
+      // Linkage summary:
+      // filename (metrics.field_mapper) -> steam_app_id (metadata) -> project (steam.app target)
+      const fileToSteamAppId = new Map<string, string>();
+      for (const r of existing as any[]) {
+        const meta = (r?.metadata || {}) as any;
+        const sid = typeof meta?.steam_app_id === 'string' ? meta.steam_app_id : String(meta?.steam_app_id || '');
+        if (sid.trim()) fileToSteamAppId.set(String(r.linkId), sid.trim());
+      }
+
+      const steamAppIds = Array.from(new Set(Array.from(fileToSteamAppId.values())));
+      if (steamAppIds.length > 0) {
+        const steamRows = await db
+          .select({ linkId: metricsLinks.linkId, targetId: metricsLinks.targetId, metadata: metricsLinks.metadata })
+          .from(metricsLinks)
+          .where(
+            and(eq(metricsLinks.linkType, 'steam.app'), inArray(metricsLinks.linkId as any, steamAppIds as any), eq(metricsLinks.targetKind, 'project')) as any,
+          )
+          .limit(5000);
+
+        const appToProject = new Map<string, { projectId: string; projectSlug: string | null; group: string | null }>();
+        for (const r of steamRows as any[]) {
+          const pid = typeof r?.targetId === 'string' ? r.targetId : '';
+          if (!pid.trim()) continue;
+          const meta = (r?.metadata || {}) as any;
+          const projectSlug = typeof meta?.project_slug === 'string' ? meta.project_slug : null;
+          const group = typeof meta?.type === 'string' ? meta.type : typeof meta?.source === 'string' ? meta.source : null;
+          appToProject.set(String(r.linkId), { projectId: pid.trim(), projectSlug, group });
+        }
+
+        const byProject = new Map<
+          string,
+          { projectId: string; projectSlug: string | null; steamAppIds: Array<{ steamAppId: string; group: string | null }>; fileNames: string[] }
+        >();
+
+        for (const [fn, sid] of fileToSteamAppId.entries()) {
+          const proj = appToProject.get(sid);
+          if (!proj) continue;
+          const key = proj.projectId;
+          const cur =
+            byProject.get(key) || { projectId: proj.projectId, projectSlug: proj.projectSlug, steamAppIds: [], fileNames: [] };
+          cur.fileNames.push(fn);
+          if (!cur.steamAppIds.some((x) => x.steamAppId === sid)) cur.steamAppIds.push({ steamAppId: sid, group: proj.group });
+          byProject.set(key, cur);
+        }
+
+        linkedProjects = Array.from(byProject.values()).sort((a, b) => (a.projectSlug || a.projectId).localeCompare(b.projectSlug || b.projectId));
+
+        if (includeComputed && linkedProjects.length > 0) {
+          // Compute total revenue for each linked project (all-time).
+          // Assumes ingestion is scoped to entity_kind='project' for this provider.
+          for (const lp of linkedProjects) {
+            const rows = await db
+              .select({
+                sum: sql<string | null>`sum(${metricsMetricPoints.value})`.as('sum'),
+              })
+              .from(metricsMetricPoints)
+              .where(and(eq(metricsMetricPoints.entityKind, 'project'), eq(metricsMetricPoints.entityId, lp.projectId), eq(metricsMetricPoints.metricKey, 'revenue_usd')) as any);
+            const sum = (rows?.[0] as any)?.sum ?? null;
+            (lp as any).computed = { revenueUsdAllTime: sum };
+          }
+        }
+      }
     }
   }
 
@@ -211,12 +284,13 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     artifacts: {
       backfillFiles: fileNames,
       mappingMissing,
+      linkedProjects,
       mapping: mapping?.kind === 'metrics_links' ? { kind: 'metrics_links', linkType: mappingLinkType, key: mappingKey } : null,
       integration: partnerId
         ? {
             partnerId,
             requiredFields,
-            configured: !!cred,
+            configured: !!cred && (cred?.enabled ?? false) && (missingFields?.length || 0) === 0,
             enabled: cred?.enabled ?? false,
             missingFields,
           }

@@ -15,6 +15,7 @@ export declare function GET(request: NextRequest): Promise<NextResponse<{
         lastVerifiedAt: Date | null;
         lastVerifyOk: boolean | null;
         lastVerifyMessage: string | null;
+        missingFields: string[];
     }[];
     orphans: {
         id: string;

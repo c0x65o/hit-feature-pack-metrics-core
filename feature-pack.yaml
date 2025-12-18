@@ -150,6 +150,16 @@ api:
       handler: "@hit/feature-pack-metrics-core/server/api/providers-id"
       description: "Provider detail (ingestor config + artifacts + preflight)"
 
+    - path: /api/metrics/ingestors
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/ingestors"
+      description: "List ingestors from .hit/metrics/ingestors/*.yaml (config-driven)"
+
+    - path: /api/metrics/ingestors/[id]/upload
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/ingestors-id-upload"
+      description: "Upload a file for an ingestor (file_upload sources)"
+
     - path: /api/metrics/ingest
       methods: [POST]
       handler: "@hit/feature-pack-metrics-core/server/api/ingest"

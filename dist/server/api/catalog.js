@@ -53,6 +53,7 @@ export async function GET() {
                 category: row.category ?? undefined,
                 description: row.description ?? undefined,
                 rollup_strategy: row.rollupStrategy ?? undefined,
+                time_kind: 'timeseries',
                 default_granularity: row.defaultGranularity ?? undefined,
                 allowed_granularities: Array.isArray(row.allowedGranularities)
                     ? row.allowedGranularities.filter((x) => typeof x === 'string')
@@ -92,6 +93,9 @@ export async function GET() {
             category: cfg.category,
             description: cfg.description,
             rollup_strategy: cfg.rollup_strategy,
+            time_kind: cfg.time_kind === 'realtime' || cfg.time_kind === 'none' || cfg.time_kind === 'timeseries'
+                ? cfg.time_kind
+                : 'timeseries',
             default_granularity: cfg.default_granularity,
             allowed_granularities: Array.isArray(cfg.allowed_granularities)
                 ? cfg.allowed_granularities.filter((x) => typeof x === 'string')
