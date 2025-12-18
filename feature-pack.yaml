@@ -3,7 +3,7 @@
 
 name: metrics-core
 version: 1.0.0
-description: Core metrics system: metric definitions, data sources, ingestion, and fast aggregation APIs
+description: "Core metrics system: metric definitions, data sources, ingestion, and fast aggregation APIs"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTES - Frontend page routes
@@ -11,16 +11,13 @@ description: Core metrics system: metric definitions, data sources, ingestion, a
 routes:
   - path: /metrics
     page: Dashboard
-    roles: []
+    roles: [admin]
   - path: /metrics/definitions
     page: Definitions
-    roles: []
+    roles: [admin]
   - path: /metrics/data-sources
     page: DataSources
-    roles: []
-  - path: /metrics/uploads/steam-sales
-    page: SteamSalesUpload
-    roles: []
+    roles: [admin]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -30,27 +27,24 @@ nav:
     label: Metrics
     path: /metrics
     icon: BarChart3
-    group: main
-    weight: 120
+    group: system
+    roles: [admin]
+    weight: 910
     showWhen: authenticated
     children:
       - id: metrics-core-definitions
         label: Definitions
         path: /metrics/definitions
         icon: BookOpen
+        roles: [admin]
         weight: 100
         showWhen: authenticated
       - id: metrics-core-data-sources
         label: Data Sources
         path: /metrics/data-sources
         icon: PlugZap
+        roles: [admin]
         weight: 110
-        showWhen: authenticated
-      - id: metrics-core-upload-steam-sales
-        label: Steam Sales Upload
-        path: /metrics/uploads/steam-sales
-        icon: Upload
-        weight: 120
         showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
