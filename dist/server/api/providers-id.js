@@ -74,6 +74,22 @@ function listBackfillFilenames(cfg, limit = 2000) {
         .map((e) => e.name)
         .slice(0, limit);
 }
+function resolveIngestorTask(spec, fallbackName) {
+    if (!spec)
+        return null;
+    if (typeof spec === 'string')
+        return null; // legacy reference to hit.yaml
+    if (typeof spec !== 'object' || Array.isArray(spec))
+        return null;
+    const rec = spec;
+    const cmd = typeof rec.command === 'string' ? rec.command : '';
+    if (!cmd.trim())
+        return null;
+    const name = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : fallbackName;
+    const description = typeof rec.description === 'string' ? rec.description : null;
+    const cron = typeof rec.cron === 'string' && rec.cron.trim() ? rec.cron.trim() : null;
+    return { name, command: cmd, description, cron };
+}
 export async function GET(request, ctx) {
     const auth = getAuthContext(request);
     if (!auth)
@@ -88,8 +104,11 @@ export async function GET(request, ctx) {
         return jsonError(`Invalid ingestor config: ${p}`, 500);
     const db = getDb();
     const tasks = loadHitYamlTasks();
-    const backfillTask = resolveTask(cfg.tasks?.backfill, tasks) || findBackfillTask(cfg.id, tasks);
-    const syncTask = resolveTask(cfg.tasks?.sync, tasks);
+    const backfillTask = resolveIngestorTask(cfg.tasks?.backfill, `metrics-core-backfill-${cfg.id}`) ||
+        resolveTask(typeof cfg.tasks?.backfill === 'string' ? cfg.tasks?.backfill : null, tasks) ||
+        findBackfillTask(cfg.id, tasks);
+    const syncTask = resolveIngestorTask(cfg.tasks?.sync, `metrics-core-sync-${cfg.id}`) ||
+        resolveTask(typeof cfg.tasks?.sync === 'string' ? cfg.tasks?.sync : null, tasks);
     const fileNames = listBackfillFilenames(cfg);
     const mapping = cfg.upload?.mapping;
     let mappingMissing = [];

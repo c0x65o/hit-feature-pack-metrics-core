@@ -17,8 +17,20 @@ type IngestorConfig = {
         entity_id: string;
     };
     tasks?: {
-        sync?: string;
-        backfill?: string;
+        sync?: string | {
+            name?: string;
+            description?: string;
+            service_name?: string;
+            command?: string;
+            cron?: string;
+        };
+        backfill?: string | {
+            name?: string;
+            description?: string;
+            service_name?: string;
+            command?: string;
+            cron?: string;
+        };
     };
     upload?: {
         enabled?: boolean;

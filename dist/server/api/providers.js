@@ -124,11 +124,29 @@ function requiredPartnerFields(partnerId) {
     const required = def.fields.filter((f) => !!f.required).map((f) => f.key);
     return { def, required };
 }
+function resolveIngestorTask(spec, fallbackName) {
+    if (!spec)
+        return null;
+    if (typeof spec === 'string')
+        return null; // legacy reference to hit.yaml task name
+    if (typeof spec !== 'object')
+        return null;
+    const cmd = typeof spec.command === 'string' ? spec.command : '';
+    if (!cmd.trim())
+        return null;
+    const name = typeof spec.name === 'string' && spec.name.trim() ? spec.name.trim() : fallbackName;
+    const description = typeof spec.description === 'string' ? spec.description : null;
+    const cron = typeof spec.cron === 'string' && spec.cron.trim() ? spec.cron.trim() : null;
+    return { name, command: cmd, description, cron };
+}
 async function computeProviderRow(cfg) {
     const db = getDb();
     const tasks = loadHitYamlTasks();
-    const backfillTask = resolveTask(cfg.tasks?.backfill, tasks) || findBackfillTask(cfg.id, tasks);
-    const syncTask = resolveTask(cfg.tasks?.sync, tasks);
+    const backfillTask = resolveIngestorTask(cfg.tasks?.backfill, `metrics-core-backfill-${cfg.id}`) ||
+        resolveTask(typeof cfg.tasks?.backfill === 'string' ? cfg.tasks?.backfill : null, tasks) ||
+        findBackfillTask(cfg.id, tasks);
+    const syncTask = resolveIngestorTask(cfg.tasks?.sync, `metrics-core-sync-${cfg.id}`) ||
+        resolveTask(typeof cfg.tasks?.sync === 'string' ? cfg.tasks?.sync : null, tasks);
     // preflight: mappings
     const mapping = cfg.upload?.mapping;
     const fileNames = listBackfillFilenames(cfg);

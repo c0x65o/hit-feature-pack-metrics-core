@@ -2,7 +2,6 @@
 # A HIT feature pack
 
 name: metrics-core
-version: 1.0.0
 description: "Core metrics system: metric definitions, data sources, ingestion, and fast aggregation APIs"
 
 # ─────────────────────────────────────────────────────────────────────────────

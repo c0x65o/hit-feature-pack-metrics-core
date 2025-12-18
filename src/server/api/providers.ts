@@ -36,7 +36,10 @@ type IngestorConfig = {
   metrics?: string[];
   data_source?: { id: string; connector_key?: string; source_kind?: string; external_ref?: string | null };
   scope?: { entity_kind: string; entity_id: string };
-  tasks?: { sync?: string; backfill?: string };
+  tasks?: {
+    sync?: string | { name?: string; description?: string; service_name?: string; command?: string; cron?: string };
+    backfill?: string | { name?: string; description?: string; service_name?: string; command?: string; cron?: string };
+  };
   upload?: {
     enabled?: boolean;
     mapping?: { kind?: string; link_type?: string; key?: string };
@@ -156,11 +159,31 @@ function requiredPartnerFields(partnerId: string) {
   return { def, required };
 }
 
+function resolveIngestorTask(
+  spec: IngestorConfig['tasks'] extends infer T ? any : any,
+  fallbackName: string,
+): { name: string; command: string; description: string | null; cron?: string | null } | null {
+  if (!spec) return null;
+  if (typeof spec === 'string') return null; // legacy reference to hit.yaml task name
+  if (typeof spec !== 'object') return null;
+  const cmd = typeof spec.command === 'string' ? spec.command : '';
+  if (!cmd.trim()) return null;
+  const name = typeof spec.name === 'string' && spec.name.trim() ? spec.name.trim() : fallbackName;
+  const description = typeof spec.description === 'string' ? spec.description : null;
+  const cron = typeof spec.cron === 'string' && spec.cron.trim() ? spec.cron.trim() : null;
+  return { name, command: cmd, description, cron };
+}
+
 async function computeProviderRow(cfg: IngestorConfig) {
   const db = getDb();
   const tasks = loadHitYamlTasks();
-  const backfillTask = resolveTask(cfg.tasks?.backfill, tasks) || findBackfillTask(cfg.id, tasks);
-  const syncTask = resolveTask(cfg.tasks?.sync, tasks);
+  const backfillTask =
+    resolveIngestorTask(cfg.tasks?.backfill as any, `metrics-core-backfill-${cfg.id}`) ||
+    resolveTask(typeof cfg.tasks?.backfill === 'string' ? cfg.tasks?.backfill : null, tasks) ||
+    findBackfillTask(cfg.id, tasks);
+  const syncTask =
+    resolveIngestorTask(cfg.tasks?.sync as any, `metrics-core-sync-${cfg.id}`) ||
+    resolveTask(typeof cfg.tasks?.sync === 'string' ? cfg.tasks?.sync : null, tasks);
 
   // preflight: mappings
   const mapping = cfg.upload?.mapping;

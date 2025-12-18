@@ -22,7 +22,10 @@ type IngestorConfig = {
   metrics?: string[];
   data_source?: { id: string; connector_key?: string; source_kind?: string; external_ref?: string | null };
   scope?: { entity_kind: string; entity_id: string };
-  tasks?: { sync?: string; backfill?: string };
+  tasks?: {
+    sync?: string | { name?: string; description?: string; service_name?: string; command?: string; cron?: string };
+    backfill?: string | { name?: string; description?: string; service_name?: string; command?: string; cron?: string };
+  };
   upload?: {
     enabled?: boolean;
     mapping?: { kind?: string; link_type?: string; key?: string };
@@ -108,6 +111,19 @@ function listBackfillFilenames(cfg: IngestorConfig, limit = 2000): string[] {
     .slice(0, limit);
 }
 
+function resolveIngestorTask(spec: unknown, fallbackName: string): { name: string; command: string; description: string | null; cron?: string | null } | null {
+  if (!spec) return null;
+  if (typeof spec === 'string') return null; // legacy reference to hit.yaml
+  if (typeof spec !== 'object' || Array.isArray(spec)) return null;
+  const rec = spec as Record<string, unknown>;
+  const cmd = typeof rec.command === 'string' ? rec.command : '';
+  if (!cmd.trim()) return null;
+  const name = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : fallbackName;
+  const description = typeof rec.description === 'string' ? rec.description : null;
+  const cron = typeof rec.cron === 'string' && rec.cron.trim() ? rec.cron.trim() : null;
+  return { name, command: cmd, description, cron };
+}
+
 export async function GET(request: NextRequest, ctx: { params: { id: string } }) {
   const auth = getAuthContext(request);
   if (!auth) return jsonError('Unauthorized', 401);
@@ -122,8 +138,13 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
 
   const db = getDb();
   const tasks = loadHitYamlTasks();
-  const backfillTask = resolveTask(cfg.tasks?.backfill, tasks) || findBackfillTask(cfg.id, tasks);
-  const syncTask = resolveTask(cfg.tasks?.sync, tasks);
+  const backfillTask =
+    resolveIngestorTask(cfg.tasks?.backfill, `metrics-core-backfill-${cfg.id}`) ||
+    resolveTask(typeof cfg.tasks?.backfill === 'string' ? cfg.tasks?.backfill : null, tasks) ||
+    findBackfillTask(cfg.id, tasks);
+  const syncTask =
+    resolveIngestorTask(cfg.tasks?.sync, `metrics-core-sync-${cfg.id}`) ||
+    resolveTask(typeof cfg.tasks?.sync === 'string' ? cfg.tasks?.sync : null, tasks);
 
   const fileNames = listBackfillFilenames(cfg);
   const mapping = cfg.upload?.mapping;
