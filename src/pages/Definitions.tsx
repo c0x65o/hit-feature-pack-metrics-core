@@ -1,35 +1,33 @@
 'use client';
 
 import React from 'react';
-import { Button, Card, Input } from '@hit/ui-kit';
+import { Button, Card } from '@hit/ui-kit';
 
-type MetricDef = {
-  id: string;
+type MetricCatalogItem = {
   key: string;
   label: string;
   unit: string;
-  category: string | null;
-  description: string | null;
-  isActive: boolean;
+  category?: string;
+  description?: string;
+  pointsCount: number;
+  firstPointAt: string | null;
+  lastPointAt: string | null;
+  lastUpdatedAt: string | null;
 };
 
 export function Definitions() {
-  const [defs, setDefs] = React.useState<MetricDef[]>([]);
+  const [items, setItems] = React.useState<MetricCatalogItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-
-  const [key, setKey] = React.useState('');
-  const [label, setLabel] = React.useState('');
-  const [unit, setUnit] = React.useState('count');
 
   async function refresh() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('/api/metrics/definitions');
+      const res = await fetch('/api/metrics/catalog');
       if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
-      const json = (await res.json()) as { data: MetricDef[] };
-      setDefs(Array.isArray(json.data) ? json.data : []);
+      const json = (await res.json()) as { items?: MetricCatalogItem[] };
+      setItems(Array.isArray(json.items) ? json.items : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -42,34 +40,13 @@ export function Definitions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function create() {
-    try {
-      setError(null);
-      const res = await fetch('/api/metrics/definitions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key, label, unit }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || `Create failed: ${res.status}`);
-      }
-      setKey('');
-      setLabel('');
-      setUnit('count');
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Metric Definitions</h1>
+          <h1 className="text-2xl font-bold">Metrics</h1>
           <p className="text-muted-foreground">
-            Define metric keys, labels, units, and rollup rules. These keys are what scripts ingest and queries request.
+            Configured metrics from <code>.hit/metrics/definitions</code>, plus live data coverage from ingested points.
           </p>
         </div>
         <Button variant="secondary" onClick={() => refresh()} disabled={loading}>
@@ -79,37 +56,32 @@ export function Definitions() {
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 
-      <Card title="Create Definition" description="Add a new metric key. (Auth required.)">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Input label="Key" value={key} onChange={setKey} placeholder="revenue_usd" />
-          <Input label="Label" value={label} onChange={setLabel} placeholder="Revenue (USD)" />
-          <Input label="Unit" value={unit} onChange={setUnit} placeholder="usd" />
-        </div>
-        <div className="mt-3">
-          <Button variant="primary" onClick={() => create()} disabled={!key.trim() || !label.trim()}>
-            Create
-          </Button>
-        </div>
-      </Card>
-
-      <Card title={`Definitions (${defs.length})`} description="Current registered metric definitions.">
+      <Card
+        title={`Configured metrics (${items.length})`}
+        description="Read-only. Configure metrics via .hit/metrics/definitions and ingest points via ingestors/sync."
+      >
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : defs.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="text-sm text-muted-foreground">No definitions yet.</div>
         ) : (
           <div className="space-y-2">
-            {defs
+            {items
               .slice()
               .sort((a, b) => a.key.localeCompare(b.key))
               .map((d) => (
-                <div key={d.id} className="flex items-start justify-between gap-4 border-b py-2">
+                <div key={d.key} className="flex items-start justify-between gap-4 border-b py-2">
                   <div>
                     <div className="font-medium">{d.key}</div>
                     <div className="text-sm text-muted-foreground">
                       {d.label} · {d.unit}
                       {d.category ? ` · ${d.category}` : ''}
-                      {d.isActive ? '' : ' · disabled'}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {d.pointsCount.toLocaleString()} point(s)
+                      {d.firstPointAt ? ` · first: ${new Date(d.firstPointAt).toISOString().slice(0, 10)}` : ' · first: —'}
+                      {d.lastPointAt ? ` · last: ${new Date(d.lastPointAt).toISOString().slice(0, 10)}` : ' · last: —'}
+                      {d.lastUpdatedAt ? ` · updated: ${new Date(d.lastUpdatedAt).toISOString().slice(0, 10)}` : ' · updated: —'}
                     </div>
                   </div>
                 </div>
