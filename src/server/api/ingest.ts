@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
+import { metricsDataSources, metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { computeDimensionsHash } from '../lib/dimensions';
 import { sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
@@ -27,11 +27,24 @@ type IngestPoint = {
   ingestBatchId?: string | null;
 };
 
+type IngestDataSource = {
+  id: string;
+  entityKind: string;
+  entityId: string;
+  connectorKey: string;
+  sourceKind: string;
+  externalRef?: string | null;
+  enabled?: boolean;
+  schedule?: string | null;
+  config?: unknown;
+  overlapPolicy?: string;
+};
+
 export async function POST(request: NextRequest) {
   const auth = getAuthContext(request);
   if (!auth) return jsonError('Unauthorized', 401);
 
-  const body = (await request.json().catch(() => null)) as { points?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { points?: unknown; dataSource?: unknown } | null;
   if (!body || !Array.isArray(body.points)) return jsonError('Body must include points: []', 400);
 
   const now = new Date();
@@ -68,6 +81,56 @@ export async function POST(request: NextRequest) {
   if (values.length === 0) return jsonError('No valid points provided', 400);
 
   const db = getDb();
+
+  // Optional: upsert the data source as part of ingestion orchestration.
+  // This avoids exposing a separate "data sources" create flow as a user concept.
+  if (body.dataSource && typeof body.dataSource === 'object') {
+    const ds = body.dataSource as Partial<IngestDataSource>;
+    if (
+      typeof ds.id === 'string' &&
+      ds.id.trim() &&
+      typeof ds.entityKind === 'string' &&
+      ds.entityKind.trim() &&
+      typeof ds.entityId === 'string' &&
+      ds.entityId.trim() &&
+      typeof ds.connectorKey === 'string' &&
+      ds.connectorKey.trim() &&
+      typeof ds.sourceKind === 'string' &&
+      ds.sourceKind.trim()
+    ) {
+      await db
+        .insert(metricsDataSources as any)
+        .values({
+          id: ds.id.trim(),
+          entityKind: ds.entityKind.trim(),
+          entityId: ds.entityId.trim(),
+          connectorKey: ds.connectorKey.trim(),
+          sourceKind: ds.sourceKind.trim(),
+          externalRef: typeof ds.externalRef === 'string' ? ds.externalRef : null,
+          enabled: ds.enabled === false ? false : true,
+          schedule: typeof ds.schedule === 'string' ? ds.schedule : null,
+          config: typeof ds.config === 'object' ? (ds.config as any) : null,
+          overlapPolicy: typeof ds.overlapPolicy === 'string' ? ds.overlapPolicy : 'upsert_points',
+          createdAt: now,
+          updatedAt: now,
+        } as any)
+        .onConflictDoUpdate({
+          target: (metricsDataSources as any).id,
+          set: {
+            entityKind: sql`excluded.entity_kind`,
+            entityId: sql`excluded.entity_id`,
+            connectorKey: sql`excluded.connector_key`,
+            sourceKind: sql`excluded.source_kind`,
+            externalRef: sql`excluded.external_ref`,
+            enabled: sql`excluded.enabled`,
+            schedule: sql`excluded.schedule`,
+            config: sql`excluded.config`,
+            overlapPolicy: sql`excluded.overlap_policy`,
+            updatedAt: now,
+          } as any,
+        });
+    }
+  }
 
   // Upsert via unique constraint (dataSourceId, metricKey, date, granularity, dimensionsHash).
   // On conflict we update value + provenance + updatedAt.

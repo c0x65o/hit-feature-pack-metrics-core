@@ -6,10 +6,10 @@
  *
  * Pattern:
  * - This runner is what you point a HIT task at (in hit.yaml).
- * - It creates/ensures a Metrics Data Source exists (idempotent by id).
  * - It runs your script/command.
  * - Your script prints JSON metric points to stdout.
  * - The runner POSTs those points to /api/metrics/ingest using X-HIT-Service-Token.
+ *   (and includes the configured data source so the server can upsert it as part of ingestion).
  *
  * Example task command:
  *   HIT_APP_URL=http://localhost:3000 HIT_SERVICE_TOKEN=... \

@@ -6,10 +6,10 @@
  *
  * Pattern:
  * - This runner is what you point a HIT task at (in hit.yaml).
- * - It creates/ensures a Metrics Data Source exists (idempotent by id).
  * - It runs your script/command.
  * - Your script prints JSON metric points to stdout.
  * - The runner POSTs those points to /api/metrics/ingest using X-HIT-Service-Token.
+ *   (and includes the configured data source so the server can upsert it as part of ingestion).
  *
  * Example task command:
  *   HIT_APP_URL=http://localhost:3000 HIT_SERVICE_TOKEN=... \
@@ -33,16 +33,6 @@ async function main() {
     if (!dataSourceId) {
         throw new Error('Missing --data-source-id (required for now)');
     }
-    await ensureDataSource({
-        baseUrl: parsed.baseUrl,
-        serviceToken: parsed.serviceToken,
-        id: dataSourceId,
-        entityKind: parsed.entityKind,
-        entityId: parsed.entityId,
-        connectorKey: parsed.connectorKey,
-        sourceKind: parsed.sourceKind,
-        externalRef: parsed.externalRef,
-    });
     const stdout = await runCommand(parsed.command, parsed.commandArgs, {
         ...process.env,
         HIT_METRICS_DATA_SOURCE_ID: dataSourceId,
@@ -70,7 +60,15 @@ async function main() {
         if (!p.date)
             throw new Error('Point missing date');
     }
-    await ingestPoints(parsed.baseUrl, parsed.serviceToken, normalized);
+    await ingestPoints(parsed.baseUrl, parsed.serviceToken, {
+        id: dataSourceId,
+        entityKind: parsed.entityKind,
+        entityId: parsed.entityId,
+        connectorKey: parsed.connectorKey,
+        sourceKind: parsed.sourceKind,
+        externalRef: parsed.externalRef,
+        enabled: true,
+    }, normalized);
     console.log(`Ingested ${normalized.length} point(s).`);
 }
 function parseArgs(argv) {
@@ -124,39 +122,28 @@ function parseArgs(argv) {
         commandArgs: cmd.slice(1),
     };
 }
-async function ensureDataSource(input) {
-    if (!input.entityKind || !input.entityId || !input.connectorKey || !input.sourceKind) {
-        throw new Error('Missing entityKind/entityId/connectorKey/sourceKind (required to ensure data source).');
+async function ingestPoints(baseUrl, token, dataSource, points) {
+    if (!dataSource.entityKind || !dataSource.entityId || !dataSource.connectorKey || !dataSource.sourceKind) {
+        throw new Error('Missing entityKind/entityId/connectorKey/sourceKind (required to ingest with dataSource).');
     }
-    const res = await fetch(`${stripTrailingSlash(input.baseUrl)}/api/metrics/data-sources`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-HIT-Service-Token': input.serviceToken,
-        },
-        body: JSON.stringify({
-            id: input.id,
-            entityKind: input.entityKind,
-            entityId: input.entityId,
-            connectorKey: input.connectorKey,
-            sourceKind: input.sourceKind,
-            externalRef: input.externalRef,
-            enabled: true,
-        }),
-    });
-    if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Failed to ensure data source (${res.status}): ${body}`);
-    }
-}
-async function ingestPoints(baseUrl, token, points) {
     const res = await fetch(`${stripTrailingSlash(baseUrl)}/api/metrics/ingest`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-HIT-Service-Token': token,
         },
-        body: JSON.stringify({ points }),
+        body: JSON.stringify({
+            dataSource: {
+                id: dataSource.id,
+                entityKind: dataSource.entityKind,
+                entityId: dataSource.entityId,
+                connectorKey: dataSource.connectorKey,
+                sourceKind: dataSource.sourceKind,
+                externalRef: dataSource.externalRef,
+                enabled: dataSource.enabled !== false,
+            },
+            points,
+        }),
     });
     if (!res.ok) {
         const body = await res.text().catch(() => '');

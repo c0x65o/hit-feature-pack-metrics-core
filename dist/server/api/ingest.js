@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
+import { metricsDataSources, metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { computeDimensionsHash } from '../lib/dimensions';
 import { sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
@@ -49,6 +49,53 @@ export async function POST(request) {
     if (values.length === 0)
         return jsonError('No valid points provided', 400);
     const db = getDb();
+    // Optional: upsert the data source as part of ingestion orchestration.
+    // This avoids exposing a separate "data sources" create flow as a user concept.
+    if (body.dataSource && typeof body.dataSource === 'object') {
+        const ds = body.dataSource;
+        if (typeof ds.id === 'string' &&
+            ds.id.trim() &&
+            typeof ds.entityKind === 'string' &&
+            ds.entityKind.trim() &&
+            typeof ds.entityId === 'string' &&
+            ds.entityId.trim() &&
+            typeof ds.connectorKey === 'string' &&
+            ds.connectorKey.trim() &&
+            typeof ds.sourceKind === 'string' &&
+            ds.sourceKind.trim()) {
+            await db
+                .insert(metricsDataSources)
+                .values({
+                id: ds.id.trim(),
+                entityKind: ds.entityKind.trim(),
+                entityId: ds.entityId.trim(),
+                connectorKey: ds.connectorKey.trim(),
+                sourceKind: ds.sourceKind.trim(),
+                externalRef: typeof ds.externalRef === 'string' ? ds.externalRef : null,
+                enabled: ds.enabled === false ? false : true,
+                schedule: typeof ds.schedule === 'string' ? ds.schedule : null,
+                config: typeof ds.config === 'object' ? ds.config : null,
+                overlapPolicy: typeof ds.overlapPolicy === 'string' ? ds.overlapPolicy : 'upsert_points',
+                createdAt: now,
+                updatedAt: now,
+            })
+                .onConflictDoUpdate({
+                target: metricsDataSources.id,
+                set: {
+                    entityKind: sql `excluded.entity_kind`,
+                    entityId: sql `excluded.entity_id`,
+                    connectorKey: sql `excluded.connector_key`,
+                    sourceKind: sql `excluded.source_kind`,
+                    externalRef: sql `excluded.external_ref`,
+                    enabled: sql `excluded.enabled`,
+                    schedule: sql `excluded.schedule`,
+                    config: sql `excluded.config`,
+                    overlapPolicy: sql `excluded.overlap_policy`,
+                    updatedAt: now,
+                },
+            });
+        }
+    }
     // Upsert via unique constraint (dataSourceId, metricKey, date, granularity, dimensionsHash).
     // On conflict we update value + provenance + updatedAt.
     // Batch upserts to avoid extremely large parameterized statements which can trigger

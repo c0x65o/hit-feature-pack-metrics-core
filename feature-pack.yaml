@@ -15,8 +15,11 @@ routes:
   - path: /metrics/definitions
     page: Definitions
     roles: [admin]
-  - path: /metrics/data-sources
-    page: DataSources
+  - path: /metrics/providers
+    page: Providers
+    roles: [admin]
+  - path: /metrics/providers/[id]
+    page: ProviderDetail
     roles: [admin]
   - path: /metrics/ingestors
     page: Ingestors
@@ -57,12 +60,12 @@ nav:
         roles: [admin]
         weight: 100
         showWhen: authenticated
-      - id: metrics-core-data-sources
-        label: Data Sources
-        path: /metrics/data-sources
-        icon: PlugZap
+      - id: metrics-core-providers
+        label: Providers
+        path: /metrics/providers
+        icon: Layers
         roles: [admin]
-        weight: 110
+        weight: 105
         showWhen: authenticated
       - id: metrics-core-ingestors
         label: Ingestors
@@ -130,7 +133,17 @@ api:
     - path: /api/metrics/data-sources
       methods: [GET]
       handler: "@hit/feature-pack-metrics-core/server/api/data-sources"
-      description: "List data sources (read-only)"
+      description: "List data sources (internal debug)"
+
+    - path: /api/metrics/providers
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/providers"
+      description: "List providers (ingestors + artifacts + preflight + stats)"
+
+    - path: /api/metrics/providers/[id]
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/providers-id"
+      description: "Provider detail (ingestor config + artifacts + preflight)"
 
     - path: /api/metrics/ingest
       methods: [POST]

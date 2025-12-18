@@ -23,6 +23,8 @@ export function IngestorDetail() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [uploading, setUploading] = React.useState(false);
+  const [preflightLoading, setPreflightLoading] = React.useState(false);
+  const [preflight, setPreflight] = React.useState<any>(null);
 
   React.useEffect(() => {
     const path = window.location.pathname;
@@ -79,6 +81,22 @@ export function IngestorDetail() {
     }
   }
 
+  async function runPreflight() {
+    if (!ingestorId) return;
+    try {
+      setPreflightLoading(true);
+      setError(null);
+      const res = await fetch(`/api/metrics/providers/${encodeURIComponent(ingestorId)}`, { method: 'GET' });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `Preflight failed: ${res.status}`);
+      setPreflight(json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreflightLoading(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -101,6 +119,19 @@ export function IngestorDetail() {
         ) : (
           <div className="text-sm text-muted-foreground">Ingestor not found.</div>
         )}
+      </Card>
+
+      <Card title="Preflight mapping check" description="Validates mappings/integration against current configured backfill files.">
+        <div className="space-y-3">
+          <Button variant="secondary" onClick={() => runPreflight()} disabled={!ingestorId || preflightLoading}>
+            {preflightLoading ? 'Checking…' : 'Run preflight'}
+          </Button>
+          {preflight?.artifacts ? (
+            <pre className="text-xs overflow-auto">{JSON.stringify(preflight.artifacts, null, 2)}</pre>
+          ) : (
+            <div className="text-sm text-muted-foreground">Run preflight to see missing mappings and integration status.</div>
+          )}
+        </div>
       </Card>
 
       <Card title="Upload">
