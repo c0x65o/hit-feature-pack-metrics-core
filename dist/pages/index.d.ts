@@ -5,4 +5,6 @@ export { Ingestors } from './Ingestors';
 export { IngestorDetail } from './IngestorDetail';
 export { Integrations } from './Integrations';
 export { IntegrationDetail } from './IntegrationDetail';
+export { Mappings } from './Mappings';
+export { MappingsType } from './MappingsType';
 //# sourceMappingURL=index.d.ts.map

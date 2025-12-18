@@ -8,6 +8,8 @@ import { getAuthContext } from '../lib/authz';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const METRIC_POINT_UPSERT_CHUNK_SIZE = 400;
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -69,24 +71,29 @@ export async function POST(request: NextRequest) {
 
   // Upsert via unique constraint (dataSourceId, metricKey, date, granularity, dimensionsHash).
   // On conflict we update value + provenance + updatedAt.
-  await db
-    .insert(metricsMetricPoints)
-    .values(values)
-    .onConflictDoUpdate({
-      target: [
-        metricsMetricPoints.dataSourceId,
-        metricsMetricPoints.metricKey,
-        metricsMetricPoints.date,
-        metricsMetricPoints.granularity,
-        metricsMetricPoints.dimensionsHash,
-      ],
-      set: {
-        value: sql`excluded.value`,
-        syncRunId: sql`excluded.sync_run_id`,
-        ingestBatchId: sql`excluded.ingest_batch_id`,
-        updatedAt: now,
-      } as any,
-    });
+  // Batch upserts to avoid extremely large parameterized statements which can trigger
+  // node-postgres/extended-protocol edge cases (e.g. "bind message has N parameter formats but 0 parameters").
+  for (let i = 0; i < values.length; i += METRIC_POINT_UPSERT_CHUNK_SIZE) {
+    const chunk = values.slice(i, i + METRIC_POINT_UPSERT_CHUNK_SIZE);
+    await db
+      .insert(metricsMetricPoints)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [
+          metricsMetricPoints.dataSourceId,
+          metricsMetricPoints.metricKey,
+          metricsMetricPoints.date,
+          metricsMetricPoints.granularity,
+          metricsMetricPoints.dimensionsHash,
+        ],
+        set: {
+          value: sql`excluded.value`,
+          syncRunId: sql`excluded.sync_run_id`,
+          ingestBatchId: sql`excluded.ingest_batch_id`,
+          updatedAt: now,
+        } as any,
+      });
+  }
 
   return NextResponse.json({ success: true, received: (body.points as any[]).length, ingested: values.length });
 }

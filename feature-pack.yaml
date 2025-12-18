@@ -30,6 +30,12 @@ routes:
   - path: /metrics/integrations/[id]
     page: IntegrationDetail
     roles: [admin]
+  - path: /metrics/mappings
+    page: Mappings
+    roles: [admin]
+  - path: /metrics/mappings/[type]
+    page: MappingsType
+    roles: [admin]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -71,6 +77,13 @@ nav:
         icon: Key
         roles: [admin]
         weight: 130
+        showWhen: authenticated
+      - id: metrics-core-mappings
+        label: Mappings
+        path: /metrics/mappings
+        icon: Link2
+        roles: [admin]
+        weight: 140
         showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -115,9 +128,9 @@ api:
       description: "List metric definitions (GET) or create a definition (POST)"
 
     - path: /api/metrics/data-sources
-      methods: [GET, POST]
+      methods: [GET]
       handler: "@hit/feature-pack-metrics-core/server/api/data-sources"
-      description: "List data sources (GET) or create a data source (POST)"
+      description: "List data sources (read-only)"
 
     - path: /api/metrics/ingest
       methods: [POST]
@@ -143,6 +156,16 @@ api:
       methods: [POST]
       handler: "@hit/feature-pack-metrics-core/server/api/partners-id-verify"
       description: "Verify integration partner credentials using configured verify action"
+
+    - path: /api/metrics/links
+      methods: [GET, POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/links"
+      description: "List or create metrics links (used for mappings and global metadata)"
+
+    - path: /api/metrics/links/[id]
+      methods: [PUT, DELETE]
+      handler: "@hit/feature-pack-metrics-core/server/api/links-id"
+      description: "Update or delete a metrics link"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES
