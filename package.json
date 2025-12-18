@@ -66,8 +66,8 @@
     "drizzle-orm": ">=0.30.0"
   },
   "devDependencies": {
-    "@hit/sdk": "file:../../hit-sdks/hit-sdk-typescript",
-    "@hit/ui-kit": "file:../hit-ui-kit",
+    "@hit/sdk": "github:c0x65o/hit-sdk-typescript",
+    "@hit/ui-kit": "github:c0x65o/hit-ui-kit",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/js-yaml": "^4.0.9",
