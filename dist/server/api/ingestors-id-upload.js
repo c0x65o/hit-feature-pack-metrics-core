@@ -96,7 +96,10 @@ function parseMaybeNumber(raw) {
 function findHeaderStartLine(lines) {
     for (let i = 0; i < lines.length; i++) {
         const lower = lines[i].toLowerCase();
-        if (lower.includes('date') && lower.includes('product') && lower.includes('bundle'))
+        // Support both formats:
+        // 1. Sales format: Date, Product, Bundle (e.g., "Shores Unknown - Sales Data.csv")
+        // 2. In-Game Sales format: Date, Product (e.g., "Stan Lees Verticus - Sales Data.csv")
+        if (lower.includes('date') && lower.includes('product'))
             return i;
     }
     return -1;
