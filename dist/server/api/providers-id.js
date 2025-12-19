@@ -169,6 +169,37 @@ export async function GET(request, ctx) {
             }
         }
     }
+    // Aggregate revenue totals per linked project (fast sanity check for "project-level rollups").
+    // Note: today we ingest Steam CSVs as:
+    // - gross_revenue_usd (Steam-specific)
+    // - revenue_usd       (net)
+    // We also accept revenue_gross_usd if/when we standardize on the canonical key.
+    if (linkedProjects.length > 0) {
+        const projectIds = linkedProjects.map((p) => p.projectId).filter(Boolean);
+        if (projectIds.length > 0) {
+            const rows = await db
+                .select({
+                entityId: metricsMetricPoints.entityId,
+                gross: sql `COALESCE(SUM(CASE WHEN ${metricsMetricPoints.metricKey} IN ('gross_revenue_usd','revenue_gross_usd') THEN CAST(${metricsMetricPoints.value} AS NUMERIC) ELSE 0 END), 0)`.as('gross'),
+                net: sql `COALESCE(SUM(CASE WHEN ${metricsMetricPoints.metricKey} = 'revenue_usd' THEN CAST(${metricsMetricPoints.value} AS NUMERIC) ELSE 0 END), 0)`.as('net'),
+            })
+                .from(metricsMetricPoints)
+                .where(and(eq(metricsMetricPoints.entityKind, 'project'), inArray(metricsMetricPoints.entityId, projectIds), inArray(metricsMetricPoints.metricKey, ['gross_revenue_usd', 'revenue_gross_usd', 'revenue_usd'])))
+                .groupBy(metricsMetricPoints.entityId);
+            const byProjectId = new Map();
+            for (const r of rows) {
+                const pid = String(r?.entityId || '');
+                const gross = Number(r?.gross ?? 0);
+                const net = Number(r?.net ?? 0);
+                if (pid)
+                    byProjectId.set(pid, { grossRevenueUsd: Number.isFinite(gross) ? gross : 0, netRevenueUsd: Number.isFinite(net) ? net : 0 });
+            }
+            linkedProjects = linkedProjects.map((p) => ({
+                ...p,
+                totals: byProjectId.get(p.projectId) || { grossRevenueUsd: 0, netRevenueUsd: 0 },
+            }));
+        }
+    }
     // integration details
     const partnerId = cfg.integration?.partner_id || null;
     const defs = loadPartnerDefinitions();

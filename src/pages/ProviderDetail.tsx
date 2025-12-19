@@ -13,6 +13,7 @@ type ProviderPayload = {
       projectSlug: string | null;
       steamAppIds: Array<{ steamAppId: string; group: string | null }>;
       fileNames: string[];
+      totals?: { grossRevenueUsd: number; netRevenueUsd: number };
     }>;
     mapping: null | { kind: 'metrics_links'; linkType: string | null; key: string | null };
     integration: null | {
@@ -41,6 +42,16 @@ export function ProviderDetail() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<ProviderPayload | null>(null);
+
+  const fmtUsd = React.useMemo(
+    () =>
+      new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0,
+      }),
+    [],
+  );
 
   React.useEffect(() => {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -189,6 +200,11 @@ export function ProviderDetail() {
                     Steam app ids: {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">Files: {p.fileNames.length}</div>
+                  {p.totals ? (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Revenue (all-time): gross={fmtUsd.format(p.totals.grossRevenueUsd || 0)} · net={fmtUsd.format(p.totals.netRevenueUsd || 0)}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

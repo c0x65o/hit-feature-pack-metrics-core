@@ -72,6 +72,10 @@ export declare function GET(request: NextRequest, ctx: {
                 group: string | null;
             }>;
             fileNames: string[];
+            totals?: {
+                grossRevenueUsd: number;
+                netRevenueUsd: number;
+            };
         }[];
         mapping: {
             kind: string;

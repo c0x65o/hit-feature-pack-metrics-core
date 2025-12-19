@@ -156,6 +156,7 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     projectSlug: string | null;
     steamAppIds: Array<{ steamAppId: string; group: string | null }>;
     fileNames: string[];
+    totals?: { grossRevenueUsd: number; netRevenueUsd: number };
   }> = [];
 
   if (cfg.backfill?.enabled && cfg.backfill.kind === 'directory' && mapping?.kind === 'metrics_links') {
@@ -218,6 +219,49 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
 
         linkedProjects = Array.from(byProject.values()).sort((a, b) => (a.projectSlug || a.projectId).localeCompare(b.projectSlug || b.projectId));
       }
+    }
+  }
+
+  // Aggregate revenue totals per linked project (fast sanity check for "project-level rollups").
+  // Note: today we ingest Steam CSVs as:
+  // - gross_revenue_usd (Steam-specific)
+  // - revenue_usd       (net)
+  // We also accept revenue_gross_usd if/when we standardize on the canonical key.
+  if (linkedProjects.length > 0) {
+    const projectIds = linkedProjects.map((p) => p.projectId).filter(Boolean);
+    if (projectIds.length > 0) {
+      const rows = await db
+        .select({
+          entityId: metricsMetricPoints.entityId,
+          gross: sql<string>`COALESCE(SUM(CASE WHEN ${metricsMetricPoints.metricKey} IN ('gross_revenue_usd','revenue_gross_usd') THEN CAST(${metricsMetricPoints.value} AS NUMERIC) ELSE 0 END), 0)`.as(
+            'gross',
+          ),
+          net: sql<string>`COALESCE(SUM(CASE WHEN ${metricsMetricPoints.metricKey} = 'revenue_usd' THEN CAST(${metricsMetricPoints.value} AS NUMERIC) ELSE 0 END), 0)`.as(
+            'net',
+          ),
+        })
+        .from(metricsMetricPoints)
+        .where(
+          and(
+            eq(metricsMetricPoints.entityKind, 'project'),
+            inArray(metricsMetricPoints.entityId as any, projectIds as any),
+            inArray(metricsMetricPoints.metricKey as any, ['gross_revenue_usd', 'revenue_gross_usd', 'revenue_usd'] as any),
+          ) as any,
+        )
+        .groupBy(metricsMetricPoints.entityId);
+
+      const byProjectId = new Map<string, { grossRevenueUsd: number; netRevenueUsd: number }>();
+      for (const r of rows as any[]) {
+        const pid = String(r?.entityId || '');
+        const gross = Number(r?.gross ?? 0);
+        const net = Number(r?.net ?? 0);
+        if (pid) byProjectId.set(pid, { grossRevenueUsd: Number.isFinite(gross) ? gross : 0, netRevenueUsd: Number.isFinite(net) ? net : 0 });
+      }
+
+      linkedProjects = linkedProjects.map((p) => ({
+        ...p,
+        totals: byProjectId.get(p.projectId) || { grossRevenueUsd: 0, netRevenueUsd: 0 },
+      }));
     }
   }
 
