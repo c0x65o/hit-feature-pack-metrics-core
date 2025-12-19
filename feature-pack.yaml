@@ -114,7 +114,7 @@ api:
     - path: /api/metrics/catalog
       methods: [GET]
       handler: "@hit/feature-pack-metrics-core/server/api/catalog"
-      description: "Get compiled metrics catalog with live data coverage stats"
+      description: "Get all available metrics with their definitions, categories, units, and data coverage stats. Use this to discover what metrics exist before querying."
 
     - path: /api/metrics/definitions
       methods: [GET, POST]
@@ -159,7 +159,7 @@ api:
     - path: /api/metrics/query
       methods: [POST]
       handler: "@hit/feature-pack-metrics-core/server/api/query"
-      description: "Fast aggregated query over metric points (bucketing, grouping, filtering)"
+      description: "Query metric data with aggregation. Body: {metricKey, start, end, bucket: 'none'|'day'|'week'|'month', agg: 'sum'|'avg'|'max', entityId?, groupByEntityId?: true}. Use bucket='none' for totals, groupByEntityId=true to get per-entity breakdown."
 
     - path: /api/metrics/partners
       methods: [GET]

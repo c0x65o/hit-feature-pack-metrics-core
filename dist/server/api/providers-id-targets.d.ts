@@ -13,6 +13,13 @@ export declare function GET(request: NextRequest, ctx: {
     meta: {
         id: string;
         kind: null;
+        formId: null;
+        limit: number;
+        scanLimit: number;
+        scanned: number;
+        filtered: number;
+        returned: number;
+        truncatedScan: boolean;
     };
 }> | NextResponse<{
     columns: {
@@ -25,7 +32,11 @@ export declare function GET(request: NextRequest, ctx: {
         kind: "forms";
         formId: string;
         limit: number;
+        scanLimit: number;
+        scanned: any;
+        filtered: any;
         returned: any;
+        truncatedScan: boolean;
     };
 }>>;
 //# sourceMappingURL=providers-id-targets.d.ts.map

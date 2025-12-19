@@ -97,6 +97,14 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   if (!auth) return jsonError('Unauthorized', 401);
 
   const id = ctx.params.id;
+  const url = new URL(request.url);
+  const qsLimit = url.searchParams.get('limit');
+  const qsScanLimit = url.searchParams.get('scanLimit');
+  const countOnly =
+    url.searchParams.get('count_only') === '1' ||
+    url.searchParams.get('countOnly') === '1' ||
+    url.searchParams.get('count_only') === 'true' ||
+    url.searchParams.get('countOnly') === 'true';
   const p = ingestorYamlPath(id);
   if (!fs.existsSync(p)) return jsonError(`Unknown provider/ingestor: ${id}`, 404);
 
@@ -105,10 +113,19 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   if (!cfg || !cfg.id) return jsonError(`Invalid ingestor config: ${p}`, 500);
 
   const spec = cfg.targets_preview || null;
-  if (!spec) return NextResponse.json({ columns: [], rows: [], meta: { id, kind: null } });
+  if (!spec)
+    return NextResponse.json({
+      columns: [],
+      rows: [],
+      meta: { id, kind: null, formId: null, limit: 0, scanLimit: 0, scanned: 0, filtered: 0, returned: 0, truncatedScan: false },
+    });
   if (spec.kind !== 'forms') return jsonError(`Unsupported targets_preview.kind: ${(spec as any).kind}`, 400);
 
-  const limit = Math.min(Math.max(Number(spec.limit || 200), 1), 1000);
+  const configuredLimit = Number(spec.limit || 200);
+  const requestedLimit = qsLimit ? Number(qsLimit) : configuredLimit;
+  const requestedScanLimit = qsScanLimit ? Number(qsScanLimit) : Math.max(configuredLimit, requestedLimit);
+  const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 200, 1), 1000);
+  const scanLimit = Math.min(Math.max(Number.isFinite(requestedScanLimit) ? requestedScanLimit : 200, limit), 5000);
   const formId = typeof spec.form_id === 'string' ? spec.form_id.trim() : '';
   if (!formId) return jsonError('targets_preview.form_id is required', 400);
 
@@ -117,11 +134,21 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     .select({ id: formEntries.id, data: (formEntries as any).data, createdAt: (formEntries as any).createdAt })
     .from(formEntries as any)
     .where(eq((formEntries as any).formId, formId) as any)
-    .limit(limit);
+    .limit(scanLimit);
 
   const rowsBase = entries
     .map((e: any) => ({ id: String(e.id), data: (e.data || {}) as any, createdAt: e.createdAt || null }))
     .filter((r: any) => passesWhere(r, spec.where || []));
+  const truncatedScan = entries.length >= scanLimit;
+  const filtered = rowsBase.length;
+
+  if (countOnly) {
+    return NextResponse.json({
+      columns: [],
+      rows: [],
+      meta: { id, kind: spec.kind, formId, limit, scanLimit, scanned: entries.length, filtered, returned: 0, truncatedScan },
+    });
+  }
 
   // Optional project enrichment (only if any column references projectId)
   const needsProject =
@@ -184,7 +211,7 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   return NextResponse.json({
     columns,
     rows: outRows,
-    meta: { id, kind: spec.kind, formId, limit, returned: outRows.length },
+    meta: { id, kind: spec.kind, formId, limit, scanLimit, scanned: entries.length, filtered, returned: outRows.length, truncatedScan },
   });
 }
 

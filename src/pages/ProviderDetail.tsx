@@ -31,9 +31,25 @@ type ProviderPayload = {
       dataSourcesCount?: number;
     };
     tasks: {
-      backfill: null | { name: string; command: string; description: string | null };
-      sync?: null | { name: string; command: string; description: string | null };
+      backfill: null | { name: string; command: string; description: string | null; cron?: string | null };
+      sync?: null | { name: string; command: string; description: string | null; cron?: string | null };
     };
+  };
+};
+
+type TargetsPreviewResponse = {
+  columns: Array<{ key: string; label: string }>;
+  rows: Array<Record<string, any>>;
+  meta: {
+    id: string;
+    kind: string | null;
+    formId: string | null;
+    limit: number;
+    scanLimit: number;
+    scanned: number;
+    filtered: number;
+    returned: number;
+    truncatedScan: boolean;
   };
 };
 
@@ -88,6 +104,40 @@ export function ProviderDetail() {
   const syncTask = artifacts?.tasks?.sync || null;
   const linkedProjects = artifacts?.linkedProjects || [];
 
+  const targetsPreviewEnabled = !!provider?.targets_preview;
+  const [targetsPreview, setTargetsPreview] = React.useState<TargetsPreviewResponse | null>(null);
+  const [targetsPreviewLoading, setTargetsPreviewLoading] = React.useState(false);
+  const [targetsPreviewError, setTargetsPreviewError] = React.useState<string | null>(null);
+
+  async function loadTargetsPreview() {
+    if (!id || !targetsPreviewEnabled) {
+      setTargetsPreview(null);
+      return;
+    }
+    setTargetsPreviewLoading(true);
+    setTargetsPreviewError(null);
+    try {
+      // scanLimit: high enough for accurate-ish counts; limit: keep UI snappy
+      const res = await fetch(
+        `/api/metrics/providers/${encodeURIComponent(id)}/targets?scanLimit=2000&limit=50`,
+        { method: 'GET' },
+      );
+      const json = (await res.json().catch(() => null)) as any;
+      if (!res.ok) throw new Error(json?.error || 'Failed to load targets preview');
+      setTargetsPreview(json as TargetsPreviewResponse);
+    } catch (e) {
+      setTargetsPreviewError(e instanceof Error ? e.message : 'Failed to load targets preview');
+      setTargetsPreview(null);
+    } finally {
+      setTargetsPreviewLoading(false);
+    }
+  }
+
+  React.useEffect(() => {
+    void loadTargetsPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, targetsPreviewEnabled]);
+
   // Upload UI (merged from IngestorDetail)
   const [file, setFile] = React.useState<File | null>(null);
   const [overwrite, setOverwrite] = React.useState(false);
@@ -112,11 +162,42 @@ export function ProviderDetail() {
       setUploadResult(json);
       // Refresh provider detail so stats/totals update immediately.
       await load();
+      await loadTargetsPreview();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
+  }
+
+  function downloadTargetsCsv() {
+    if (!targetsPreview?.columns || !targetsPreview?.rows) return;
+    const cols = targetsPreview.columns;
+    const rows = targetsPreview.rows;
+
+    function esc(v: any) {
+      if (v === null || v === undefined) return '';
+      const s = typeof v === 'string' ? v : JSON.stringify(v);
+      // escape CSV: wrap in quotes if needed, double quotes inside
+      if (/[,"\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+
+    const header = cols.map((c) => esc(c.label || c.key)).join(',');
+    const body = rows
+      .map((r) => cols.map((c) => esc((r as any)[c.key])).join(','))
+      .join('\n');
+    const csv = `${header}\n${body}\n`;
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `provider-${id}-targets.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -166,6 +247,18 @@ export function ProviderDetail() {
 
               {artifacts.stats ? <Badge variant="info">{artifacts.stats.pointsCount} points</Badge> : <Badge variant="default">Points —</Badge>}
               {artifacts.stats?.lastPointDate ? <Badge variant="default">Last point: {artifacts.stats.lastPointDate}</Badge> : null}
+              {targetsPreviewEnabled ? (
+                targetsPreviewLoading ? (
+                  <Badge variant="default">Targets…</Badge>
+                ) : targetsPreview?.meta ? (
+                  <Badge variant="default">
+                    Targets: {targetsPreview.meta.filtered}
+                    {targetsPreview.meta.truncatedScan ? '+' : ''}
+                  </Badge>
+                ) : (
+                  <Badge variant="default">Targets: —</Badge>
+                )
+              ) : null}
             </div>
 
             {artifacts.mappingMissing.length > 0 ? (
@@ -188,6 +281,68 @@ export function ProviderDetail() {
           </div>
         )}
       </Card>
+
+      {targetsPreviewEnabled ? (
+        <Card
+          title="Targets"
+          description="Preview of the records this provider will process (same discovery query; no scraping)."
+        >
+          {targetsPreviewLoading ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : targetsPreviewError ? (
+            <div className="text-sm text-red-600">{targetsPreviewError}</div>
+          ) : targetsPreview?.meta ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="info">{targetsPreview.meta.filtered}{targetsPreview.meta.truncatedScan ? '+' : ''} targets</Badge>
+                <span className="text-xs text-muted-foreground">
+                  scanned={targetsPreview.meta.scanned} scanLimit={targetsPreview.meta.scanLimit} returned={targetsPreview.meta.returned} limit={targetsPreview.meta.limit}
+                </span>
+                <div className="flex-1" />
+                <Button variant="secondary" size="sm" onClick={downloadTargetsCsv} disabled={!targetsPreview.rows?.length}>
+                  Download CSV
+                </Button>
+              </div>
+
+              {targetsPreview.rows.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No targets found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        {targetsPreview.columns.map((c) => (
+                          <th key={c.key} className="py-2 pr-4 font-medium">
+                            {c.label || c.key}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {targetsPreview.rows.map((r, idx) => (
+                        <tr key={idx} className="border-b hover:bg-muted/50 transition-colors">
+                          {targetsPreview.columns.map((c) => (
+                            <td key={c.key} className="py-2 pr-4">
+                              {(() => {
+                                const v = (r as any)[c.key];
+                                if (v === null || v === undefined) return '—';
+                                if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+                                return JSON.stringify(v);
+                              })()}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">No targets preview configured.</div>
+          )}
+        </Card>
+      ) : null}
 
       <Card title="Metrics">
         {loading ? (
@@ -297,6 +452,7 @@ export function ProviderDetail() {
               </Button>
             </div>
             <pre className="text-xs overflow-auto">{syncTask.command}</pre>
+            {syncTask.cron ? <div className="text-xs text-muted-foreground">Cron: {syncTask.cron}</div> : null}
             {syncTask.description ? <div className="text-sm text-muted-foreground">{syncTask.description}</div> : null}
           </div>
         )}
