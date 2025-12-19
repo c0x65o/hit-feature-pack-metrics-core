@@ -209,6 +209,10 @@ async function computeProviderRow(cfg: IngestorConfig) {
     } else if (validate && mappingLinkType && mappingKey === 'exact_filename') {
       mappingOk = true;
       mappingMissingCount = 0;
+    } else if (validate && mappingLinkType && mappingKey === 'normalize_steam_sales') {
+      // For Steam Sales, mapping can be derived from CSV contents (ProductID), so filename mapping is optional.
+      mappingOk = true;
+      mappingMissingCount = 0;
     }
   }
 

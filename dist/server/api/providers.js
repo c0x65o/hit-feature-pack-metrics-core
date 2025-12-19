@@ -172,6 +172,11 @@ async function computeProviderRow(cfg) {
             mappingOk = true;
             mappingMissingCount = 0;
         }
+        else if (validate && mappingLinkType && mappingKey === 'normalize_steam_sales') {
+            // For Steam Sales, mapping can be derived from CSV contents (ProductID), so filename mapping is optional.
+            mappingOk = true;
+            mappingMissingCount = 0;
+        }
     }
     // preflight: integration creds
     let integrationPartnerId = cfg.integration?.partner_id || null;

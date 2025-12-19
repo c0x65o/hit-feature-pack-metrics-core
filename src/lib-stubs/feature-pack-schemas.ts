@@ -18,3 +18,12 @@ export {
   metricsPartnerCredentials,
   metricsMetricPoints,
 } from '../schema/metrics-core';
+
+// Cross-pack tables that metrics-core may reference in some app integrations.
+// In the real application, these are provided by the generated `@/lib/feature-pack-schemas`.
+// Here we declare them as `any` so the feature pack can compile in isolation.
+//
+// IMPORTANT: Do not rely on these being present at runtime unless the consuming app includes
+// the corresponding feature packs (e.g. forms, projects).
+export const formEntries: any = undefined;
+export const projects: any = undefined;

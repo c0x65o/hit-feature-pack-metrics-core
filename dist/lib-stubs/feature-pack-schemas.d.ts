@@ -6,4 +6,6 @@
  * via the generated lib/feature-pack-schemas.ts file.
  */
 export { metricsMetricDefinitions, metricsDataSources, metricsSyncRuns, metricsIngestBatches, metricsIngestRowErrors, metricsLinks, metricsPartnerCredentials, metricsMetricPoints, } from '../schema/metrics-core';
+export declare const formEntries: any;
+export declare const projects: any;
 //# sourceMappingURL=feature-pack-schemas.d.ts.map

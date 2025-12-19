@@ -13,7 +13,7 @@ export declare function POST(request: NextRequest, ctx: {
     fileName: string;
     fileSize: number;
     resolved: {
-        steamAppId: any;
+        steamAppId: string;
         projectId: any;
         projectSlug: any;
         group: any;

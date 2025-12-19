@@ -88,6 +88,37 @@ export function ProviderDetail() {
   const syncTask = artifacts?.tasks?.sync || null;
   const linkedProjects = artifacts?.linkedProjects || [];
 
+  // Upload UI (merged from IngestorDetail)
+  const [file, setFile] = React.useState<File | null>(null);
+  const [overwrite, setOverwrite] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadResult, setUploadResult] = React.useState<any>(null);
+
+  async function upload() {
+    if (!file || !id) return;
+    try {
+      setUploading(true);
+      setError(null);
+      setUploadResult(null);
+      const form = new FormData();
+      form.append('file', file);
+      form.append('overwrite', overwrite ? 'true' : 'false');
+      const res = await fetch(`/api/metrics/ingestors/${encodeURIComponent(id)}/upload`, {
+        method: 'POST',
+        body: form,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `Upload failed: ${res.status}`);
+      setUploadResult(json);
+      // Refresh provider detail so stats/totals update immediately.
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -180,37 +211,35 @@ export function ProviderDetail() {
         )}
       </Card>
 
-      <Card title="Linked projects (steam.app → project)">
-        {loading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : linkedProjects.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
-            No linked projects found. Expected <code>metrics_links</code> rows with <code>link_type="steam.app"</code> linking steam_app_id → project.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              {linkedProjects.map((p) => (
-                <div key={p.projectId} className="border rounded-md p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="info">{p.projectSlug || p.projectId}</Badge>
-                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{p.projectId}</code>
-                  </div>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    Steam app ids: {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">Files: {p.fileNames.length}</div>
-                  {p.totals ? (
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      Revenue (all-time): gross={fmtUsd.format(p.totals.grossRevenueUsd || 0)} · net={fmtUsd.format(p.totals.netRevenueUsd || 0)}
+      {linkedProjects.length > 0 ? (
+        <Card title="Linked projects (steam.app → project)">
+          {loading ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                {linkedProjects.map((p) => (
+                  <div key={p.projectId} className="border rounded-md p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="info">{p.projectSlug || p.projectId}</Badge>
+                      <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{p.projectId}</code>
                     </div>
-                  ) : null}
-                </div>
-              ))}
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Steam app ids: {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">Files: {p.fileNames.length}</div>
+                    {p.totals ? (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Revenue (all-time): gross={fmtUsd.format(p.totals.grossRevenueUsd || 0)} · net={fmtUsd.format(p.totals.netRevenueUsd || 0)}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-      </Card>
+          )}
+        </Card>
+      ) : null}
 
       <Card title="Backfill task">
         {loading ? (
@@ -294,19 +323,32 @@ export function ProviderDetail() {
             <div className="text-sm">
               <div className="font-medium">Upload</div>
               <div className="text-muted-foreground">{provider?.upload?.enabled ? 'enabled' : 'disabled'}</div>
-              {provider?.upload?.enabled ? (
-                <div className="mt-2">
-                  <Button variant="primary" size="sm" onClick={() => (window.location.href = `/metrics/ingestors/${encodeURIComponent(provider.id)}`)}>
-                    Open upload UI
-                  </Button>
-                </div>
-              ) : null}
             </div>
 
             <div className="text-sm">
               <div className="font-medium">Config</div>
               <pre className="text-xs overflow-auto">{JSON.stringify(provider, null, 2)}</pre>
             </div>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Upload & ingest">
+        {loading ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : !provider?.upload?.enabled ? (
+          <div className="text-sm text-muted-foreground">Upload is disabled for this provider.</div>
+        ) : (
+          <div className="space-y-3">
+            <input type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
+              Overwrite existing batch even if it’s larger/equal
+            </label>
+            <Button variant="primary" onClick={() => upload()} disabled={!file || uploading}>
+              {uploading ? 'Uploading…' : 'Upload & Ingest'}
+            </Button>
+            {uploadResult ? <pre className="text-xs overflow-auto">{JSON.stringify(uploadResult, null, 2)}</pre> : null}
           </div>
         )}
       </Card>

@@ -20,12 +20,6 @@ routes:
   - path: /metrics/providers/[id]
     page: ProviderDetail
     roles: [admin]
-  - path: /metrics/ingestors
-    page: Ingestors
-    roles: [admin]
-  - path: /metrics/ingestors/[id]
-    page: IngestorDetail
-    roles: [admin]
   - path: /metrics/integrations
     page: Integrations
     roles: [admin]
@@ -65,13 +59,6 @@ nav:
         icon: Layers
         roles: [admin]
         weight: 105
-        showWhen: authenticated
-      - id: metrics-core-ingestors
-        label: Ingestors
-        path: /metrics/ingestors
-        icon: PackageSearch
-        roles: [admin]
-        weight: 120
         showWhen: authenticated
       - id: metrics-core-integrations
         label: Integrations

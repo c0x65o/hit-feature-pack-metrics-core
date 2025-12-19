@@ -3,10 +3,11 @@ import { getDb } from '@/lib/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { computeDimensionsHash } from '../lib/dimensions';
 import { getAuthContext } from '../lib/authz';
-import { metricsDataSources, metricsIngestBatches, metricsLinks, metricsMetricPoints } from '@/lib/feature-pack-schemas';
+import { formEntries, metricsDataSources, metricsIngestBatches, metricsLinks, metricsMetricPoints, projects } from '@/lib/feature-pack-schemas';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as yaml from 'js-yaml';
+import crypto from 'node:crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -136,6 +137,11 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
   const platformIdx = idx((h) => h === 'platform');
   const countryIdx = idx((h) => h === 'country');
   const countryCodeIdx = idx((h) => h.includes('country') && h.includes('code'));
+  const regionIdx = idx((h) => h === 'region');
+  const currencyIdx = idx((h) => h === 'currency');
+  const tagIdx = idx((h) => h === 'tag');
+  const typeIdx = idx((h) => h === 'type');
+  const gameIdx = idx((h) => h === 'game');
   const productIdIdx = idx((h) => h.includes('product(id'));
 
   const grossUnitsIdx = idx((h) => h.includes('gross units sold'));
@@ -148,7 +154,7 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
 
   if (dateIdx === null) throw new Error('Missing Date column in CSV');
 
-  // Aggregate by (date, app_id, platform, country_code, country)
+  // Aggregate by (date, app_id, platform, region, country_code, country)
   const agg = new Map<string, { dims: any; sums: Record<string, number>; date: Date }>();
   let minDate: Date | null = null;
   let maxDate: Date | null = null;
@@ -170,6 +176,11 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
     const platform = getStr(platformIdx) || 'steam';
     const country = getStr(countryIdx);
     const countryCode = getStr(countryCodeIdx);
+    const region = getStr(regionIdx);
+    const currency = getStr(currencyIdx);
+    const tag = getStr(tagIdx);
+    const type = getStr(typeIdx);
+    const game = getStr(gameIdx);
 
     const productId = getStr(productIdIdx);
     const appId = productId && productId !== '-1' ? productId : fallbackAppId;
@@ -177,11 +188,16 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
     const dims = {
       app_id: String(appId),
       platform: String(platform),
+      region: String(region),
       country: String(country),
       country_code: String(countryCode),
+      currency: String(currency),
+      tag: String(tag),
+      type: String(type),
+      game: String(game),
     };
 
-    const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}|${dims.platform}|${dims.country_code}|${dims.country}`;
+    const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}|${dims.platform}|${dims.region}|${dims.country_code}|${dims.country}`;
     const existing = agg.get(key);
     const sums = existing?.sums || {
       revenue_usd: 0,
@@ -207,8 +223,105 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
   return { agg, minDate, maxDate };
 }
 
+function inferSteamAppIdFromParsed(parsed: ReturnType<typeof parseSteamDailySales>): string | null {
+  const ids = new Set<string>();
+  for (const entry of parsed.agg.values()) {
+    const appId = String((entry as any)?.dims?.app_id || '').trim();
+    if (appId) ids.add(appId);
+  }
+  if (ids.size === 1) return Array.from(ids)[0]!;
+  return null;
+}
+
 function cryptoRandomId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isUuidLike(input: string): boolean {
+  const s = input.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
+function deterministicProjectUuidFromLegacyId(oldId: string): string {
+  const hex = crypto.createHash('md5').update(`${oldId}projects`).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+async function tryUpsertSteamAppLinkFromStorefronts(args: { db: any; steamAppId: string; now: Date }) {
+  const { db, steamAppId, now } = args;
+  const STORE_FRONTS_FORM_ID = 'form_storefronts';
+
+  // Find a storefront entry with platform=steam and store_id=<steam_app_id>
+  // Data shape (from forms seed): { project: { entityKind, entityId, label }, platform, store_id, is_active, ... }
+  const rows = await db
+    .select({
+      id: formEntries.id,
+      data: formEntries.data,
+    })
+    .from(formEntries)
+    .where(and(eq(formEntries.formId, STORE_FRONTS_FORM_ID), sql`(${formEntries.data}->>'platform') = 'steam'`, sql`(${formEntries.data}->>'store_id') = ${steamAppId}`) as any)
+    .limit(25);
+
+  for (const r of rows as any[]) {
+    const data = (r?.data || {}) as any;
+    const isActive = data.is_active === undefined ? true : Boolean(data.is_active);
+    if (!isActive) continue;
+    const proj = data.project;
+    const rawProjectId = proj && typeof proj === 'object' && typeof proj.entityId === 'string' ? String(proj.entityId) : null;
+    if (!rawProjectId) continue;
+
+    // Seeded form entries sometimes contain legacy marketing IDs like "proj_3e0b9c27".
+    // Normalize to the Projects feature pack UUIDs (matches the deterministic UUID logic in 020_projects_feature_pack.sql).
+    const projectId = isUuidLike(rawProjectId) ? rawProjectId : deterministicProjectUuidFromLegacyId(rawProjectId);
+
+    const projectRows = await db
+      .select({ id: projects.id, slug: projects.slug })
+      .from(projects)
+      .where(eq(projects.id as any, projectId as any) as any)
+      .limit(1);
+    const projectSlug = projectRows[0]?.slug ? String(projectRows[0].slug) : null;
+
+    const metadata = {
+      source: 'forms',
+      form_id: STORE_FRONTS_FORM_ID,
+      entry_id: r.id,
+      legacy_project_id: isUuidLike(rawProjectId) ? null : rawProjectId,
+      project_slug: projectSlug,
+      game_id: typeof data.game_id === 'string' ? data.game_id : null,
+      store_url: typeof data.store_url === 'string' ? data.store_url : null,
+      platform: 'steam',
+      type: 'game',
+    };
+
+    await db
+      .insert(metricsLinks as any)
+      .values({
+        id: `mlink_${cryptoRandomId()}`,
+        linkType: 'steam.app',
+        linkId: steamAppId,
+        targetKind: 'project',
+        targetId: projectId,
+        metadata,
+        createdAt: now,
+        updatedAt: now,
+      } as any)
+      .onConflictDoUpdate({
+        target: [
+          (metricsLinks as any).linkType,
+          (metricsLinks as any).linkId,
+          (metricsLinks as any).targetKind,
+          (metricsLinks as any).targetId,
+        ],
+        set: {
+          metadata: sql`excluded.metadata`,
+          updatedAt: now,
+        } as any,
+      });
+
+    return { projectId, projectSlug, metadata };
+  }
+
+  return null;
 }
 
 export async function POST(request: NextRequest, ctx: { params: { id: string } }) {
@@ -227,8 +340,9 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
   if (!cfg.upload.mapping || cfg.upload.mapping.kind !== 'metrics_links') {
     return jsonError('Upload mapping must be configured (mapping.kind=metrics_links)', 400);
   }
-  if ((cfg.upload.mapping.key || 'exact_filename') !== 'exact_filename') {
-    return jsonError('Only mapping.key=exact_filename is supported for upload right now', 400);
+  const mappingKey = (cfg.upload.mapping.key || 'exact_filename') as 'exact_filename' | 'normalize_steam_sales';
+  if (mappingKey !== 'exact_filename' && mappingKey !== 'normalize_steam_sales') {
+    return jsonError(`Unsupported upload mapping.key: ${mappingKey}`, 400);
   }
 
   const form = await request.formData().catch(() => null);
@@ -247,25 +361,47 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
   const db = getDb();
   const now = new Date();
 
-  // Resolve mapping (exact filename -> steam_app_id in metadata)
+  let steamAppId = '';
   const linkType = cfg.upload.mapping.link_type;
+
+  // If mapping.key is "exact_filename", attempt filename -> steam_app_id. If missing, we can still infer from CSV.
+  // If mapping.key is "normalize_steam_sales", normalize common Steam export filename variants before lookup,
+  // and still fall back to CSV inference.
+  let mappingLookupKey = fileName;
+  if (mappingKey === 'normalize_steam_sales') {
+    mappingLookupKey = fileName.replace(/\.csv$/i, '').replace(/ - sales data$/i, '').trim().toLowerCase();
+  }
+
   const linkRow = await db
     .select({ metadata: metricsLinks.metadata })
     .from(metricsLinks)
-    .where(and(eq(metricsLinks.linkType, linkType), eq(metricsLinks.linkId, fileName)) as any)
+    .where(and(eq(metricsLinks.linkType, linkType), eq(metricsLinks.linkId, mappingLookupKey)) as any)
     .limit(1);
 
-  const metadata = (linkRow[0]?.metadata || {}) as any;
-  const steamAppId = typeof metadata?.steam_app_id === 'string' ? metadata.steam_app_id : String(metadata?.steam_app_id || '');
-  if (!steamAppId.trim()) {
+  const mappedMeta = (linkRow[0]?.metadata || {}) as any;
+  const mappedSteamAppId =
+    typeof mappedMeta?.steam_app_id === 'string' ? mappedMeta.steam_app_id : String(mappedMeta?.steam_app_id || '');
+
+  // Parse and aggregate (we use this both for inference and for ingestion).
+  let parsed: ReturnType<typeof parseSteamDailySales>;
+  try {
+    parsed = parseSteamDailySales(content, mappedSteamAppId.trim());
+  } catch (e) {
+    return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
+  }
+
+  // Prefer inferred app_id from CSV contents (Steam exports usually include ProductID).
+  // Fall back to filename mapping metadata for older/odd exports.
+  steamAppId = inferSteamAppIdFromParsed(parsed) || mappedSteamAppId.trim();
+  if (!steamAppId) {
     return jsonError(
-      `Missing metrics link mapping for filename "${fileName}". Expected a row in metrics_links: link_type="${linkType}", link_id="${fileName}" with metadata.steam_app_id`,
+      `Could not determine steam_app_id for upload "${fileName}". Either add a mapping in metrics_links (link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id), or ensure the CSV includes a ProductID column with a single Steam App ID.`,
       400,
     );
   }
 
   // Resolve steam_app_id -> project (and optional grouping metadata) via metrics_links.
-  const steamAppLinks = await db
+  let steamAppLinks = await db
     .select({
       targetId: metricsLinks.targetId,
       metadata: metricsLinks.metadata,
@@ -273,6 +409,19 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
     .from(metricsLinks)
     .where(and(eq(metricsLinks.linkType, 'steam.app'), eq(metricsLinks.linkId, steamAppId.trim()), eq(metricsLinks.targetKind, 'project')) as any)
     .limit(1);
+
+  // If not linked yet, try to provision the link from the Storefronts form entry (Steam platform).
+  if ((steamAppLinks as any[]).length === 0) {
+    await tryUpsertSteamAppLinkFromStorefronts({ db, steamAppId: steamAppId.trim(), now });
+    steamAppLinks = await db
+      .select({
+        targetId: metricsLinks.targetId,
+        metadata: metricsLinks.metadata,
+      })
+      .from(metricsLinks)
+      .where(and(eq(metricsLinks.linkType, 'steam.app'), eq(metricsLinks.linkId, steamAppId.trim()), eq(metricsLinks.targetKind, 'project')) as any)
+      .limit(1);
+  }
 
   const steamAppLink = steamAppLinks[0] as any;
   const linkedProjectId =
@@ -286,14 +435,6 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
   // If no project link exists, fall back to the ingestor's static scope.
   const entityKind = linkedProjectId ? 'project' : cfg.scope.entity_kind;
   const entityId = linkedProjectId ? linkedProjectId : cfg.scope.entity_id;
-
-  // Parse and aggregate
-  let parsed: ReturnType<typeof parseSteamDailySales>;
-  try {
-    parsed = parseSteamDailySales(content, steamAppId.trim());
-  } catch (e) {
-    return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
-  }
 
   const minDate = parsed.minDate;
   const maxDate = parsed.maxDate;

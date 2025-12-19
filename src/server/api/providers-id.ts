@@ -220,6 +220,10 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
         linkedProjects = Array.from(byProject.values()).sort((a, b) => (a.projectSlug || a.projectId).localeCompare(b.projectSlug || b.projectId));
       }
     }
+    // Steam Sales can infer app_id from CSV contents; don't block on filename mappings.
+    if (validate && linkType && key === 'normalize_steam_sales') {
+      mappingMissing = [];
+    }
   }
 
   // Aggregate revenue totals per linked project (fast sanity check for "project-level rollups").
