@@ -19,18 +19,16 @@ export async function GET(request) {
     const linkType = (url.searchParams.get('linkType') || '').trim();
     const q = (url.searchParams.get('q') || '').trim();
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || '200'), 1), 500);
-    if (!linkType)
-        return jsonError('Missing linkType', 400);
     const db = getDb();
-    const where = q
-        ? and(eq(metricsLinks.linkType, linkType), ilike(metricsLinks.linkId, `%${q}%`))
-        : eq(metricsLinks.linkType, linkType);
-    const rows = await db
-        .select()
-        .from(metricsLinks)
-        .where(where)
-        .orderBy(sql `${metricsLinks.updatedAt} DESC`)
-        .limit(limit);
+    const conditions = [];
+    if (linkType)
+        conditions.push(eq(metricsLinks.linkType, linkType));
+    if (q)
+        conditions.push(ilike(metricsLinks.linkId, `%${q}%`));
+    let query = db.select().from(metricsLinks);
+    if (conditions.length > 0)
+        query = query.where(and(...conditions));
+    const rows = await query.orderBy(sql `${metricsLinks.updatedAt} DESC`).limit(limit);
     return NextResponse.json({ data: rows });
 }
 export async function POST(request) {

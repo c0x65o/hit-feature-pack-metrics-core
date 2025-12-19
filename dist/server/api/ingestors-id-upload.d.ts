@@ -14,9 +14,8 @@ export declare function POST(request: NextRequest, ctx: {
     fileSize: number;
     resolved: {
         steamAppId: string;
-        projectId: any;
-        projectSlug: any;
-        group: any;
+        projectId: string;
+        projectSlug: string;
     };
     dateRange: {
         start: string;

@@ -157,7 +157,7 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
 
   if (dateIdx === null) throw new Error('Missing Date column in CSV');
 
-  // Aggregate by (date, app_id, platform, region, country_code, country)
+  // Aggregate by (date, steam_app_id, platform, region, country_code, country)
   const agg = new Map<string, { dims: any; sums: Record<string, number>; date: Date }>();
   let minDate: Date | null = null;
   let maxDate: Date | null = null;
@@ -186,10 +186,10 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
     const game = getStr(gameIdx);
 
     const productId = getStr(productIdIdx);
-    const appId = productId && productId !== '-1' ? productId : fallbackAppId;
+    const steamAppId = productId && productId !== '-1' ? productId : fallbackAppId || 'unknown';
 
     const dims = {
-      app_id: String(appId),
+      steam_app_id: String(steamAppId),
       platform: String(platform),
       region: String(region),
       country: String(country),
@@ -200,7 +200,7 @@ function parseSteamDailySales(content: string, fallbackAppId: string) {
       game: String(game),
     };
 
-    const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}|${dims.platform}|${dims.region}|${dims.country_code}|${dims.country}`;
+    const key = `${dt.toISOString().slice(0, 10)}|${dims.steam_app_id}|${dims.platform}|${dims.region}|${dims.country_code}|${dims.country}`;
     const existing = agg.get(key);
     const sums = existing?.sums || {
       revenue_usd: 0,
@@ -285,12 +285,9 @@ function parseSteamDailyWishlist(content: string, steamAppId: string) {
     const gifts = parseMaybeNumber(getStr(giftsIdx));
     const net = adds - deletes - conversions - gifts;
 
-    const dims = {
-      app_id: String(steamAppId),
-      platform: 'steam',
-    };
+    const dims = steamAppId ? { steam_app_id: String(steamAppId), platform: 'steam' } : { platform: 'steam' };
 
-    const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}`;
+    const key = steamAppId ? `${dt.toISOString().slice(0, 10)}|${String(steamAppId)}` : `${dt.toISOString().slice(0, 10)}`;
     const existing = agg.get(key);
     const sums = existing?.sums || {
       wishlist_adds: 0,
@@ -360,8 +357,8 @@ function parseSteamDailyPlayerData(content: string, steamAppId: string) {
     const dau = parseMaybeNumber(getStr(dauIdx));
     const pcu = parseMaybeNumber(getStr(pcuIdx));
 
-    const dims = { app_id: String(steamAppId), platform: 'steam' };
-    const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}`;
+    const dims = steamAppId ? { steam_app_id: String(steamAppId), platform: 'steam' } : { platform: 'steam' };
+    const key = steamAppId ? `${dt.toISOString().slice(0, 10)}|${String(steamAppId)}` : `${dt.toISOString().slice(0, 10)}`;
     const existing = agg.get(key);
     const sums = existing?.sums || { daily_active_users: 0, peak_concurrent_users: 0 };
 
@@ -378,7 +375,7 @@ function parseSteamDailyPlayerData(content: string, steamAppId: string) {
 function inferSteamAppIdFromParsed(parsed: ReturnType<typeof parseSteamDailySales>): string | null {
   const ids = new Set<string>();
   for (const entry of parsed.agg.values()) {
-    const appId = String((entry as any)?.dims?.app_id || '').trim();
+    const appId = String((entry as any)?.dims?.steam_app_id || '').trim();
     if (appId) ids.add(appId);
   }
   if (ids.size === 1) return Array.from(ids)[0]!;
@@ -513,7 +510,6 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
   const db = getDb();
   const now = new Date();
 
-  let steamAppId = '';
   const linkType = cfg.upload.mapping.link_type;
 
   // If mapping.key is "exact_filename", attempt filename -> steam_app_id. If missing, we can still infer from CSV.
@@ -531,8 +527,12 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
     .limit(1);
 
   const mappedMeta = (linkRow[0]?.metadata || {}) as any;
-  const mappedSteamAppId =
-    typeof mappedMeta?.steam_app_id === 'string' ? mappedMeta.steam_app_id : String(mappedMeta?.steam_app_id || '');
+  const mappedProjectSlug =
+    typeof mappedMeta?.project_slug === 'string'
+      ? mappedMeta.project_slug.trim()
+      : typeof mappedMeta?.projectSlug === 'string'
+        ? mappedMeta.projectSlug.trim()
+        : '';
 
   // Parse and aggregate (we use this both for inference and for ingestion).
   let parsed:
@@ -540,45 +540,46 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
     | ReturnType<typeof parseSteamDailyWishlist>
     | ReturnType<typeof parseSteamDailyPlayerData>;
 
+  // Resolve file -> project (by slug). This is the canonical linkage for file-based ingestion.
+  // We intentionally avoid using steam_app_id for linkage; it can still exist as a dimension.
+  let linkedProjectId: string | null = null;
+  let linkedProjectSlug: string | null = null;
+  if (mappedProjectSlug) {
+    const proj = await db
+      .select({ id: projects.id, slug: projects.slug })
+      .from(projects as any)
+      .where(eq((projects as any).slug, mappedProjectSlug) as any)
+      .limit(1);
+    if (!proj[0]?.id) {
+      return jsonError(`Unknown project slug in mapping for "${fileName}": "${mappedProjectSlug}"`, 400);
+    }
+    linkedProjectId = String(proj[0].id);
+    linkedProjectSlug = String(proj[0].slug || mappedProjectSlug);
+  } else {
+    return jsonError(
+      `Missing project_slug mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.project_slug="<project slug>".`,
+      400,
+    );
+  }
+
+  // For Steam file ingestors, treat steam app id as a dimension only.
+  const fallbackSteamAppIdForDims = '';
+
   if (ingestorId === 'steam-sales') {
     try {
-      parsed = parseSteamDailySales(content, mappedSteamAppId.trim());
+      parsed = parseSteamDailySales(content, fallbackSteamAppIdForDims);
     } catch (e) {
       return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
     }
-
-    // Prefer inferred app_id from CSV contents (Steam exports usually include ProductID).
-    // Fall back to filename mapping metadata for older/odd exports.
-    steamAppId = inferSteamAppIdFromParsed(parsed) || mappedSteamAppId.trim();
-    if (!steamAppId) {
-      return jsonError(
-        `Could not determine steam_app_id for upload "${fileName}". Either add a mapping in metrics_links (link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id), or ensure the CSV includes a ProductID column with a single Steam App ID.`,
-        400,
-      );
-    }
   } else if (ingestorId === 'steam-wishlist') {
-    steamAppId = mappedSteamAppId.trim();
-    if (!steamAppId) {
-      return jsonError(
-        `Missing steam_app_id mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id="<steam_app_id>".`,
-        400,
-      );
-    }
     try {
-      parsed = parseSteamDailyWishlist(content, steamAppId);
+      parsed = parseSteamDailyWishlist(content, '');
     } catch (e) {
       return jsonError(e instanceof Error ? e.message : 'Failed to parse wishlist CSV', 400);
     }
   } else if (ingestorId === 'steam-playerdata') {
-    steamAppId = mappedSteamAppId.trim();
-    if (!steamAppId) {
-      return jsonError(
-        `Missing steam_app_id mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id="<steam_app_id>".`,
-        400,
-      );
-    }
     try {
-      parsed = parseSteamDailyPlayerData(content, steamAppId);
+      parsed = parseSteamDailyPlayerData(content, '');
     } catch (e) {
       return jsonError(e instanceof Error ? e.message : 'Failed to parse player data CSV', 400);
     }
@@ -586,36 +587,8 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
     return jsonError(`Unsupported ingestor for CSV upload: ${ingestorId}`, 400);
   }
 
-  // Resolve steam_app_id -> project (and optional grouping metadata) via metrics_links.
-  let steamAppLinks = await db
-    .select({
-      targetId: metricsLinks.targetId,
-      metadata: metricsLinks.metadata,
-    })
-    .from(metricsLinks)
-    .where(and(eq(metricsLinks.linkType, 'steam.app'), eq(metricsLinks.linkId, steamAppId.trim()), eq(metricsLinks.targetKind, 'project')) as any)
-    .limit(1);
-
-  // If not linked yet, try to provision the link from the Storefronts form entry (Steam platform).
-  if ((steamAppLinks as any[]).length === 0) {
-    await tryUpsertSteamAppLinkFromStorefronts({ db, steamAppId: steamAppId.trim(), now });
-    steamAppLinks = await db
-      .select({
-        targetId: metricsLinks.targetId,
-        metadata: metricsLinks.metadata,
-      })
-      .from(metricsLinks)
-      .where(and(eq(metricsLinks.linkType, 'steam.app'), eq(metricsLinks.linkId, steamAppId.trim()), eq(metricsLinks.targetKind, 'project')) as any)
-      .limit(1);
-  }
-
-  const steamAppLink = steamAppLinks[0] as any;
-  const linkedProjectId =
-    typeof steamAppLink?.targetId === 'string' && steamAppLink.targetId.trim() ? steamAppLink.targetId.trim() : null;
-  const steamMeta = (steamAppLink?.metadata || {}) as any;
-  const linkedProjectSlug = typeof steamMeta?.project_slug === 'string' ? steamMeta.project_slug : null;
-  const steamProductType = typeof steamMeta?.type === 'string' ? steamMeta.type : typeof steamMeta?.source === 'string' ? steamMeta.source : 'game';
-  const steamProductName = typeof steamMeta?.name === 'string' ? steamMeta.name : '';
+  // Infer steam app id from parsed data for dimension/ID purposes
+  const steamAppId = inferSteamAppIdFromParsed(parsed as ReturnType<typeof parseSteamDailySales>) || '';
 
   // For metrics-core v1: prefer scoping the metrics points to the linked project.
   // If no project link exists, fall back to the ingestor's static scope.
@@ -626,13 +599,30 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
   const maxDate = parsed.maxDate;
   if (!minDate || !maxDate) return jsonError('No valid daily rows found in CSV', 400);
 
+  function safeIdPart(s: unknown, maxLen = 64) {
+    return String(s || '')
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, maxLen);
+  }
+
   // Ensure data source exists (orchestrated).
   const ds = cfg.data_source;
   const scope = cfg.scope;
+
+  // IMPORTANT:
+  // For Steam file ingestors, we must NOT use a single global data_source.id for all apps.
+  // Otherwise overlap policy (exact date range) collides across different steam_app_id files.
+  const dsId =
+    ingestorId === 'steam-sales' || ingestorId === 'steam-wishlist' || ingestorId === 'steam-playerdata'
+      ? `${ds.id}_${safeIdPart(entityKind, 16)}_${safeIdPart(entityId, 48)}_${safeIdPart(steamAppId, 24)}`
+      : ds.id;
+
   await db
     .insert(metricsDataSources as any)
     .values({
-      id: ds.id,
+      id: dsId,
       entityKind,
       entityId,
       connectorKey: ds.connector_key,
@@ -657,7 +647,7 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
       .from(metricsIngestBatches)
       .where(
         and(
-          eq(metricsIngestBatches.dataSourceId, ds.id),
+          eq(metricsIngestBatches.dataSourceId, dsId),
           eq(metricsIngestBatches.type, 'csv_upload' as any),
           eq(metricsIngestBatches.dateRangeStart, minDate as any),
           eq(metricsIngestBatches.dateRangeEnd, maxDate as any),
@@ -681,7 +671,7 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
 
   await db.insert(metricsIngestBatches as any).values({
     id: ingestBatchId,
-    dataSourceId: ds.id,
+    dataSourceId: dsId,
     type: 'csv_upload',
     fileName,
     fileSize: String(fileSize),
@@ -700,17 +690,12 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
   let wishlistBaseDimensions: any | null = null;
   for (const entry of parsed.agg.values()) {
     const day = entry.date;
-    const dims = {
-      ...(entry.dims || {}),
-      steam_app_id: String(steamAppId.trim()),
-      steam_product_type: String(steamProductType || 'game'),
-      ...(steamProductName ? { steam_product_name: steamProductName } : {}),
-    };
+    const dims = { ...(entry.dims || {}) };
     const dimensionsHash = computeDimensionsHash(dims);
     const base = {
       entityKind,
       entityId,
-      dataSourceId: ds.id,
+      dataSourceId: dsId,
       date: day,
       granularity: 'daily',
       dimensions: dims,
@@ -810,10 +795,9 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
     fileName,
     fileSize,
     resolved: {
-      steamAppId: steamAppId.trim(),
+      steamAppId: steamAppId,
       projectId: linkedProjectId,
       projectSlug: linkedProjectSlug,
-      group: steamProductType,
     },
     dateRange: { start: minDate.toISOString().slice(0, 10), end: maxDate.toISOString().slice(0, 10) },
     pointsUpserted: values.length,

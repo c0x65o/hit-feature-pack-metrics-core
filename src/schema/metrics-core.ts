@@ -149,6 +149,7 @@ export const metricsIngestRowErrors = pgTable('metrics_ingest_row_errors', {
  * Global linking/metadata registry used by ingestors and tooling.
  *
  * Examples:
+ * (Legacy example, no longer required for file-based ingestion)
  * - linkType="steam.app", linkId="276410", targetKind="project", targetId="ministry-of-broadcast"
  * - linkType="metrics.field_mapper", linkId="ministry of broadcast", targetKind="project", targetId="ministry-of-broadcast",
  *   metadata={ "steam_app_id": "276410" }

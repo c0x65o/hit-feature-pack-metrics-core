@@ -169,6 +169,11 @@ async function uploadOne(args: Args, ingestorId: string, filePath: string) {
 
   const text = await res.text().catch(() => '');
   if (!res.ok) {
+    // Treat overlap-policy skips as non-fatal so backfills can be re-run safely.
+    // The API returns 409 with a human-readable "skipped" message.
+    if (res.status === 409 && !args.overwrite) {
+      return { skipped: true, status: 409, fileName: name, message: text };
+    }
     throw new Error(`Upload failed for "${name}" (${res.status}): ${text}`);
   }
 

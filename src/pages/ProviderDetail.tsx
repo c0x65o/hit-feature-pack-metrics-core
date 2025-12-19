@@ -400,7 +400,7 @@ export function ProviderDetail() {
       </Card>
 
       {linkedProjects.length > 0 ? (
-        <Card title="Linked projects (steam.app → project)">
+        <Card title="Linked projects (file → project)">
           {loading ? (
             <div className="text-sm text-muted-foreground">Loading…</div>
           ) : (
@@ -413,7 +413,7 @@ export function ProviderDetail() {
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{p.projectId}</code>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
-                      Steam app ids: {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}
+                      Steam app ids (from CSV dims): {p.steamAppIds.map((x) => `${x.steamAppId}${x.group ? ` (${x.group})` : ''}`).join(', ') || '—'}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">Files: {p.fileNames.length}</div>
                     {p.totals ? (
