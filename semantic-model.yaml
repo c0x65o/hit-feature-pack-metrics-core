@@ -1,0 +1,105 @@
+version: 0.1
+
+# Metrics Core — Semantic Model (pack-owned, reusable across apps)
+#
+# This file is intended to be shared across many applications.
+# It defines the *meaning* of entities/relationships/measures in a stable, LLM-friendly way,
+# without referencing app-specific IDs like form IDs.
+#
+# Applications provide "bindings" that map these abstract extension kinds to local implementation
+# details (e.g. which Custom Form ID represents storefronts).
+
+entities:
+  - id: project
+    label: Project
+    kind: core
+
+  # Optional CRM concept. Concrete implementation can vary by app/feature pack.
+  - id: company
+    label: Company
+    kind: core
+    optional: true
+
+  # Extension entity kinds (implemented by forms, but not tied to a specific form_id here)
+  - id: storefront
+    label: Storefront
+    kind: extension
+    extension_kind: storefront
+
+  - id: social_channel
+    label: Social Channel
+    kind: extension
+    extension_kind: social_channel
+
+
+relationships:
+  # Company → Projects: defined once. Concrete storage (FK, link table, form) can vary.
+  - id: company_projects
+    label: Company → Projects
+    from: company
+    to: project
+    optional: true
+    source:
+      kind: association
+      # A consuming app/pack can wire this to its chosen implementation.
+
+  # Project → Storefronts via extension binding
+  - id: project_storefronts
+    label: Project → Storefronts
+    from: project
+    to: storefront
+    source:
+      kind: extension_binding
+      binding: storefronts
+
+  # Project → Social Channels via extension binding
+  - id: project_social_channels
+    label: Project → Social Channels
+    from: project
+    to: social_channel
+    source:
+      kind: extension_binding
+      binding: social_channels
+
+
+measures:
+  # Measures reference metric keys in the metrics catalog.
+  # The catalog remains the canonical schema/validation for metric definitions.
+
+  - id: revenue_gross_usd
+    label: Revenue (Gross USD)
+    kind: metric
+    metric_key: revenue_gross_usd
+    entity: project
+
+  - id: revenue_net_usd
+    label: Revenue (Net USD)
+    kind: metric
+    metric_key: revenue_usd
+    entity: project
+
+  - id: project_count
+    label: Project Count
+    kind: metric
+    metric_key: fp.projects.project_count
+    entity: project
+
+  - id: tiktok_followers
+    label: TikTok Followers
+    kind: metric
+    metric_key: tiktok_followers
+    entity: project
+
+
+derived_measures:
+  # Rollup example (relationship traversal + aggregation).
+  - id: company_revenue_gross_usd
+    label: Company Revenue (Gross USD)
+    kind: rollup_over_relationship
+    optional: true
+    entity: company
+    relationship: company_projects
+    measure: revenue_gross_usd
+    rollup: sum
+
+

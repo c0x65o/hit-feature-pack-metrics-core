@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
@@ -11,21 +11,23 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-type Bucket = 'hour' | 'day' | 'week' | 'month';
+type Bucket = 'none' | 'hour' | 'day' | 'week' | 'month';
 type Agg = 'sum' | 'avg' | 'min' | 'max' | 'count';
 
 type QueryBody = {
   metricKey: string;
-  start: string;
-  end: string;
+  start?: string;
+  end?: string;
   bucket?: Bucket;
   agg?: Agg;
   entityKind?: string;
   entityId?: string;
+  entityIds?: string[];
   dataSourceId?: string;
   sourceGranularity?: string;
   dimensions?: Record<string, string | number | boolean | null>;
   groupBy?: string[]; // dimension keys to group by
+  groupByEntityId?: boolean;
 };
 
 export async function POST(request: NextRequest) {
@@ -38,14 +40,30 @@ export async function POST(request: NextRequest) {
   const metricKey = typeof body.metricKey === 'string' ? body.metricKey.trim() : '';
   if (!metricKey) return jsonError('Missing metricKey', 400);
 
-  const start = new Date(body.start);
-  const end = new Date(body.end);
-  if (Number.isNaN(start.getTime())) return jsonError('Invalid start', 400);
-  if (Number.isNaN(end.getTime())) return jsonError('Invalid end', 400);
-  if (end <= start) return jsonError('end must be after start', 400);
-
   const bucket: Bucket = body.bucket || 'day';
-  if (!['hour', 'day', 'week', 'month'].includes(bucket)) return jsonError(`Invalid bucket: ${bucket}`, 400);
+  if (!['none', 'hour', 'day', 'week', 'month'].includes(bucket)) return jsonError(`Invalid bucket: ${bucket}`, 400);
+
+  let start: Date | null = null;
+  let end: Date | null = null;
+  if (bucket !== 'none') {
+    if (!body.start || !body.end) return jsonError('Missing start/end', 400);
+    start = new Date(body.start);
+    end = new Date(body.end);
+    if (Number.isNaN(start.getTime())) return jsonError('Invalid start', 400);
+    if (Number.isNaN(end.getTime())) return jsonError('Invalid end', 400);
+    if (end <= start) return jsonError('end must be after start', 400);
+  } else {
+    // For totals queries, allow optional start/end filters.
+    if (body.start) {
+      start = new Date(body.start);
+      if (Number.isNaN(start.getTime())) return jsonError('Invalid start', 400);
+    }
+    if (body.end) {
+      end = new Date(body.end);
+      if (Number.isNaN(end.getTime())) return jsonError('Invalid end', 400);
+    }
+    if (start && end && end <= start) return jsonError('end must be after start', 400);
+  }
 
   const agg: Agg = body.agg || 'sum';
   if (!['sum', 'avg', 'min', 'max', 'count'].includes(agg)) return jsonError(`Invalid agg: ${agg}`, 400);
@@ -55,17 +73,20 @@ export async function POST(request: NextRequest) {
     if (typeof k !== 'string' || !/^[a-zA-Z0-9_]+$/.test(k)) return jsonError(`Invalid groupBy key: ${String(k)}`, 400);
   }
 
-  const whereParts: any[] = [
-    eq(metricsMetricPoints.metricKey, metricKey),
-    gte(metricsMetricPoints.date, start),
-    lte(metricsMetricPoints.date, end),
-  ];
+  const whereParts: any[] = [eq(metricsMetricPoints.metricKey, metricKey)];
+  if (start) whereParts.push(gte(metricsMetricPoints.date, start));
+  if (end) whereParts.push(lte(metricsMetricPoints.date, end));
 
   if (typeof body.entityKind === 'string' && body.entityKind.trim()) {
     whereParts.push(eq(metricsMetricPoints.entityKind, body.entityKind.trim()));
   }
   if (typeof body.entityId === 'string' && body.entityId.trim()) {
     whereParts.push(eq(metricsMetricPoints.entityId, body.entityId.trim()));
+  }
+  const entityIds = Array.isArray(body.entityIds) ? body.entityIds.map((x) => String(x || '').trim()).filter(Boolean) : [];
+  if (entityIds.length > 0) {
+    if (entityIds.length > 1000) return jsonError('Too many entityIds (max 1000)', 400);
+    whereParts.push(inArray(metricsMetricPoints.entityId as any, entityIds as any));
   }
   if (typeof body.dataSourceId === 'string' && body.dataSourceId.trim()) {
     whereParts.push(eq(metricsMetricPoints.dataSourceId, body.dataSourceId.trim()));
@@ -86,7 +107,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const bucketExpr = sql`date_trunc(${bucket}, ${metricsMetricPoints.date})`.as('bucket');
+  const groupByEntityId = Boolean(body.groupByEntityId);
 
   const aggExpr =
     agg === 'sum'
@@ -102,29 +123,42 @@ export async function POST(request: NextRequest) {
   const aggAliased = aggExpr.as('value');
 
   const groupExprs = groupBy.map((k) => sql`${metricsMetricPoints.dimensions} ->> ${k}`.as(k));
+  const selectShape: Record<string, unknown> = {
+    value: aggAliased as any,
+    ...Object.fromEntries(groupBy.map((k, idx) => [k, groupExprs[idx]])),
+  };
+  const groupByExprs: any[] = [...groupExprs];
+  const orderByExprs: any[] = [];
+  if (groupByEntityId) {
+    (selectShape as any).entityId = metricsMetricPoints.entityId;
+    groupByExprs.unshift(metricsMetricPoints.entityId as any);
+  }
 
   const db = getDb();
 
-  const rows = await db
-    .select({
-      bucket: bucketExpr as any,
-      value: aggAliased as any,
-      ...Object.fromEntries(groupBy.map((k, idx) => [k, groupExprs[idx]])),
-    })
-    .from(metricsMetricPoints)
-    .where(and(...whereParts))
-    .groupBy(bucketExpr, ...groupExprs)
-    .orderBy(bucketExpr);
+  if (bucket !== 'none') {
+    const bucketExpr = sql`date_trunc(${bucket}, ${metricsMetricPoints.date})`.as('bucket');
+    (selectShape as any).bucket = bucketExpr as any;
+    groupByExprs.unshift(bucketExpr as any);
+    orderByExprs.push(bucketExpr as any);
+  } else {
+    // totals: stable ordering is by entityId (if requested) then groupBy dimensions
+    if (groupByEntityId) orderByExprs.push(metricsMetricPoints.entityId as any);
+  }
+  for (const ge of groupExprs) orderByExprs.push(ge as any);
+
+  const rows = await db.select(selectShape as any).from(metricsMetricPoints).where(and(...whereParts)).groupBy(...groupByExprs).orderBy(...orderByExprs);
 
   return NextResponse.json({
     data: rows,
     meta: {
       metricKey,
-      start: start.toISOString(),
-      end: end.toISOString(),
+      start: start ? start.toISOString() : null,
+      end: end ? end.toISOString() : null,
       bucket,
       agg,
       groupBy,
+      groupByEntityId,
     },
   });
 }

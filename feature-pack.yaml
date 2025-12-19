@@ -136,6 +136,11 @@ api:
       handler: "@hit/feature-pack-metrics-core/server/api/providers-id"
       description: "Provider detail (ingestor config + artifacts + preflight)"
 
+    - path: /api/metrics/providers/[id]/targets
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/providers-id-targets"
+      description: "Preview records/targets that a provider will process (config-driven)"
+
     - path: /api/metrics/ingestors
       methods: [GET]
       handler: "@hit/feature-pack-metrics-core/server/api/ingestors"

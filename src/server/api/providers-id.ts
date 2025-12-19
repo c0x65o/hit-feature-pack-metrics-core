@@ -289,6 +289,21 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   const dataSourceId = cfg.data_source?.id || null;
   const connectorKey = cfg.data_source?.connector_key || null;
   let stats: any = null;
+
+  function toIsoDay(v: unknown): string | null {
+    if (!v) return null;
+    const d = v instanceof Date ? v : new Date(v as any);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString().slice(0, 10);
+  }
+
+  function toIso(v: unknown): string | null {
+    if (!v) return null;
+    const d = v instanceof Date ? v : new Date(v as any);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+
   if (dataSourceId && Array.isArray(cfg.metrics) && cfg.metrics.length > 0) {
     const rows = await db
       .select({
@@ -302,9 +317,9 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     const r = rows[0];
     stats = {
       pointsCount: Number(r?.c || 0),
-      firstPointDate: r?.minDate ? r.minDate.toISOString().slice(0, 10) : null,
-      lastPointDate: r?.maxDate ? r.maxDate.toISOString().slice(0, 10) : null,
-      lastUpdatedAt: r?.maxUpdated ? r.maxUpdated.toISOString() : null,
+      firstPointDate: toIsoDay((r as any)?.minDate),
+      lastPointDate: toIsoDay((r as any)?.maxDate),
+      lastUpdatedAt: toIso((r as any)?.maxUpdated),
       dataSourcesCount: 1,
     };
   } else if (connectorKey && Array.isArray(cfg.metrics) && cfg.metrics.length > 0) {
@@ -322,9 +337,9 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
     const r = rows[0];
     stats = {
       pointsCount: Number(r?.pCount || 0),
-      firstPointDate: r?.minDate ? r.minDate.toISOString().slice(0, 10) : null,
-      lastPointDate: r?.maxDate ? r.maxDate.toISOString().slice(0, 10) : null,
-      lastUpdatedAt: r?.maxUpdated ? r.maxUpdated.toISOString() : null,
+      firstPointDate: toIsoDay((r as any)?.minDate),
+      lastPointDate: toIsoDay((r as any)?.maxDate),
+      lastUpdatedAt: toIso((r as any)?.maxUpdated),
       dataSourcesCount: Number(r?.dsCount || 0),
     };
   }
