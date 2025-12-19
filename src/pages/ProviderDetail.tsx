@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Button, Card, Badge } from '@hit/ui-kit';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 type ProviderPayload = {
   provider: any;
@@ -31,8 +32,8 @@ type ProviderPayload = {
       dataSourcesCount?: number;
     };
     tasks: {
-      backfill: null | { name: string; command: string; description: string | null; cron?: string | null };
-      sync?: null | { name: string; command: string; description: string | null; cron?: string | null };
+      backfill: null | { name: string; command: string; description: string | null; cron?: string | null; service_name?: string | null };
+      sync?: null | { name: string; command: string; description: string | null; cron?: string | null; service_name?: string | null };
     };
   };
 };
@@ -104,10 +105,42 @@ export function ProviderDetail() {
   const syncTask = artifacts?.tasks?.sync || null;
   const linkedProjects = artifacts?.linkedProjects || [];
 
+  const [runningTaskName, setRunningTaskName] = React.useState<string | null>(null);
+  const [lastTriggeredExecutionId, setLastTriggeredExecutionId] = React.useState<string | null>(null);
+
+  async function runTask(task: { name: string; command: string; service_name?: string | null }) {
+    setRunningTaskName(task.name);
+    setError(null);
+    setLastTriggeredExecutionId(null);
+    try {
+      const res = await fetch(`/api/proxy/tasks/hit/tasks/${encodeURIComponent(task.name)}/execute`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        // Virtual task definition: lets us run without requiring hit.yaml tasks entries.
+        body: JSON.stringify({
+          triggered_by: 'manual',
+          command: task.command,
+          service_name: task.service_name || null,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as any;
+      if (!res.ok) throw new Error(json?.detail || json?.error || `Failed to execute task: ${res.status}`);
+      if (json?.id) setLastTriggeredExecutionId(String(json.id));
+      // refresh provider artifacts shortly after triggering
+      setTimeout(() => {
+        void load();
+      }, 1500);
+    } finally {
+      setRunningTaskName(null);
+    }
+  }
+
   const targetsPreviewEnabled = !!provider?.targets_preview;
   const [targetsPreview, setTargetsPreview] = React.useState<TargetsPreviewResponse | null>(null);
   const [targetsPreviewLoading, setTargetsPreviewLoading] = React.useState(false);
   const [targetsPreviewError, setTargetsPreviewError] = React.useState<string | null>(null);
+  const [artifactsExpanded, setArtifactsExpanded] = React.useState(false);
 
   async function loadTargetsPreview() {
     if (!id || !targetsPreviewEnabled) {
@@ -406,6 +439,14 @@ export function ProviderDetail() {
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="info">{backfillTask.name}</Badge>
               <Button
+                variant="primary"
+                size="sm"
+                disabled={runningTaskName === backfillTask.name}
+                onClick={() => runTask(backfillTask)}
+              >
+                {runningTaskName === backfillTask.name ? 'Running…' : 'Run'}
+              </Button>
+              <Button
                 variant="secondary"
                 size="sm"
                 onClick={async () => {
@@ -420,10 +461,14 @@ export function ProviderDetail() {
               </Button>
             </div>
             <pre className="text-xs overflow-auto">{backfillTask.command}</pre>
+            {backfillTask.cron ? <div className="text-xs text-muted-foreground">Cron: {backfillTask.cron}</div> : null}
+            {lastTriggeredExecutionId && runningTaskName === null ? (
+              <div className="text-xs text-muted-foreground">
+                Triggered execution: <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{lastTriggeredExecutionId}</code>
+              </div>
+            ) : null}
             {backfillTask.description ? <div className="text-sm text-muted-foreground">{backfillTask.description}</div> : null}
-            <div className="text-xs text-muted-foreground">
-              Note: there is no “run task” endpoint yet, so this UI currently exposes the exact command to run.
-            </div>
+            <div className="text-xs text-muted-foreground">Runs through the Tasks system (same as the Jobs/Tasks page).</div>
           </div>
         )}
       </Card>
@@ -437,6 +482,14 @@ export function ProviderDetail() {
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="info">{syncTask.name}</Badge>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={runningTaskName === syncTask.name}
+                onClick={() => runTask(syncTask)}
+              >
+                {runningTaskName === syncTask.name ? 'Running…' : 'Run'}
+              </Button>
               <Button
                 variant="secondary"
                 size="sm"
@@ -453,40 +506,58 @@ export function ProviderDetail() {
             </div>
             <pre className="text-xs overflow-auto">{syncTask.command}</pre>
             {syncTask.cron ? <div className="text-xs text-muted-foreground">Cron: {syncTask.cron}</div> : null}
+            {lastTriggeredExecutionId && runningTaskName === null ? (
+              <div className="text-xs text-muted-foreground">
+                Triggered execution: <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{lastTriggeredExecutionId}</code>
+              </div>
+            ) : null}
             {syncTask.description ? <div className="text-sm text-muted-foreground">{syncTask.description}</div> : null}
           </div>
         )}
       </Card>
 
-      <Card title="Artifacts">
-        {loading ? (
-          <div className="text-sm text-muted-foreground">Loading…</div>
-        ) : !provider ? (
-          <div className="text-sm text-muted-foreground">Provider not found.</div>
-        ) : (
-          <div className="space-y-4">
-            <div className="text-sm">
-              <div className="font-medium">Backfill</div>
-              <div className="text-muted-foreground">
-                {provider?.backfill?.enabled ? 'enabled' : 'disabled'} · kind: {provider?.backfill?.kind || '—'} · dir:{' '}
-                {provider?.backfill?.dir || '—'} · pattern: {provider?.backfill?.pattern || '—'}
+      <Card>
+        <button
+          onClick={() => setArtifactsExpanded(!artifactsExpanded)}
+          className="flex items-center gap-2 mb-3 text-left text-2xl font-bold"
+        >
+          {artifactsExpanded ? (
+            <ChevronDown className="w-4 h-4" />
+          ) : (
+            <ChevronRight className="w-4 h-4" />
+          )}
+          <span>Artifacts</span>
+        </button>
+        {artifactsExpanded ? (
+          loading ? (
+            <div className="text-sm text-muted-foreground">Loading…</div>
+          ) : !provider ? (
+            <div className="text-sm text-muted-foreground">Provider not found.</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-sm">
+                <div className="font-medium">Backfill</div>
+                <div className="text-muted-foreground">
+                  {provider?.backfill?.enabled ? 'enabled' : 'disabled'} · kind: {provider?.backfill?.kind || '—'} · dir:{' '}
+                  {provider?.backfill?.dir || '—'} · pattern: {provider?.backfill?.pattern || '—'}
+                </div>
+                {artifacts ? (
+                  <div className="text-muted-foreground">Files detected: {artifacts.backfillFiles.length}</div>
+                ) : null}
               </div>
-              {artifacts ? (
-                <div className="text-muted-foreground">Files detected: {artifacts.backfillFiles.length}</div>
-              ) : null}
-            </div>
 
-            <div className="text-sm">
-              <div className="font-medium">Upload</div>
-              <div className="text-muted-foreground">{provider?.upload?.enabled ? 'enabled' : 'disabled'}</div>
-            </div>
+              <div className="text-sm">
+                <div className="font-medium">Upload</div>
+                <div className="text-muted-foreground">{provider?.upload?.enabled ? 'enabled' : 'disabled'}</div>
+              </div>
 
-            <div className="text-sm">
-              <div className="font-medium">Config</div>
-              <pre className="text-xs overflow-auto">{JSON.stringify(provider, null, 2)}</pre>
+              <div className="text-sm">
+                <div className="font-medium">Config</div>
+                <pre className="text-xs overflow-auto">{JSON.stringify(provider, null, 2)}</pre>
+              </div>
             </div>
-          </div>
-        )}
+          )
+        ) : null}
       </Card>
 
       <Card title="Upload & ingest">

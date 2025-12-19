@@ -197,6 +197,142 @@ function parseSteamDailySales(content, fallbackAppId) {
     }
     return { agg, minDate, maxDate };
 }
+function findHeaderStartLineWishlist(lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const lower = lines[i].toLowerCase();
+        if (lower.includes('datelocal') && lower.includes('game') && lower.includes('adds'))
+            return i;
+    }
+    return -1;
+}
+function parseSteamDailyWishlist(content, steamAppId) {
+    const lines = content.split(/\r?\n/);
+    const headerIdx = findHeaderStartLineWishlist(lines);
+    if (headerIdx < 0)
+        throw new Error('Could not find header row in wishlist CSV');
+    const header = parseCSVLine(lines[headerIdx] ?? '').map((h) => h.trim());
+    const headerLower = header.map((h) => h.toLowerCase().trim());
+    const idxExact = (name) => {
+        const i = headerLower.indexOf(name);
+        return i === -1 ? null : i;
+    };
+    const dateIdx = idxExact('datelocal');
+    const gameIdx = idxExact('game');
+    const addsIdx = idxExact('adds');
+    const deletesIdx = idxExact('deletes');
+    const purchasesIdx = idxExact('purchasesandactivations') ??
+        idxExact('purchases and activations') ??
+        idxExact('purchases') ??
+        idxExact('activations');
+    const giftsIdx = idxExact('gifts');
+    if (dateIdx === null)
+        throw new Error('Missing DateLocal column in wishlist CSV');
+    if (addsIdx === null)
+        throw new Error('Missing Adds column in wishlist CSV');
+    const agg = new Map();
+    let minDate = null;
+    let maxDate = null;
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+        const line = lines[i]?.trim();
+        if (!line)
+            continue;
+        if (line.toLowerCase().startsWith('sep='))
+            continue;
+        const row = parseCSVLine(line);
+        if (dateIdx >= row.length)
+            continue;
+        const dt = parseDateOnly(row[dateIdx] ?? '');
+        if (!dt)
+            continue;
+        if (!minDate || dt < minDate)
+            minDate = dt;
+        if (!maxDate || dt > maxDate)
+            maxDate = dt;
+        const getStr = (j) => (j === null || j >= row.length ? '' : String(row[j] ?? '').trim());
+        const adds = parseMaybeNumber(getStr(addsIdx));
+        const deletes = parseMaybeNumber(getStr(deletesIdx));
+        const conversions = parseMaybeNumber(getStr(purchasesIdx));
+        const gifts = parseMaybeNumber(getStr(giftsIdx));
+        const net = adds - deletes - conversions - gifts;
+        const dims = {
+            app_id: String(steamAppId),
+            platform: 'steam',
+        };
+        const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}`;
+        const existing = agg.get(key);
+        const sums = existing?.sums || {
+            wishlist_adds: 0,
+            wishlist_deletes: 0,
+            wishlist_conversions: 0,
+            wishlist_gifts: 0,
+            wishlist_net_change: 0,
+        };
+        sums.wishlist_adds += adds;
+        sums.wishlist_deletes += deletes;
+        sums.wishlist_conversions += conversions;
+        sums.wishlist_gifts += gifts;
+        sums.wishlist_net_change += net;
+        agg.set(key, { dims, sums, date: dt });
+    }
+    return { agg, minDate, maxDate };
+}
+function findHeaderStartLinePlayerData(lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const lower = lines[i].toLowerCase();
+        if (lower.includes('datereported') && lower.includes('dailyactiveusers'))
+            return i;
+    }
+    return -1;
+}
+function parseSteamDailyPlayerData(content, steamAppId) {
+    const lines = content.split(/\r?\n/);
+    const headerIdx = findHeaderStartLinePlayerData(lines);
+    if (headerIdx < 0)
+        throw new Error('Could not find header row in player data CSV');
+    const header = parseCSVLine(lines[headerIdx] ?? '').map((h) => h.trim());
+    const headerLower = header.map((h) => h.toLowerCase().trim());
+    const idxExact = (name) => {
+        const i = headerLower.indexOf(name);
+        return i === -1 ? null : i;
+    };
+    const dateIdx = idxExact('datereported');
+    const dauIdx = idxExact('dailyactiveusers');
+    const pcuIdx = idxExact('peakconcurrentusers');
+    if (dateIdx === null)
+        throw new Error('Missing DateReported column in player data CSV');
+    const agg = new Map();
+    let minDate = null;
+    let maxDate = null;
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+        const line = lines[i]?.trim();
+        if (!line)
+            continue;
+        if (line.toLowerCase().startsWith('sep='))
+            continue;
+        const row = parseCSVLine(line);
+        if (dateIdx >= row.length)
+            continue;
+        const dt = parseDateOnly(row[dateIdx] ?? '');
+        if (!dt)
+            continue;
+        if (!minDate || dt < minDate)
+            minDate = dt;
+        if (!maxDate || dt > maxDate)
+            maxDate = dt;
+        const getStr = (j) => (j === null || j >= row.length ? '' : String(row[j] ?? '').trim());
+        const dau = parseMaybeNumber(getStr(dauIdx));
+        const pcu = parseMaybeNumber(getStr(pcuIdx));
+        const dims = { app_id: String(steamAppId), platform: 'steam' };
+        const key = `${dt.toISOString().slice(0, 10)}|${dims.app_id}`;
+        const existing = agg.get(key);
+        const sums = existing?.sums || { daily_active_users: 0, peak_concurrent_users: 0 };
+        // Some exports can contain duplicates; max is safer than sum.
+        sums.daily_active_users = Math.max(Number(sums.daily_active_users || 0), dau);
+        sums.peak_concurrent_users = Math.max(Number(sums.peak_concurrent_users || 0), pcu);
+        agg.set(key, { dims, sums, date: dt });
+    }
+    return { agg, minDate, maxDate };
+}
 function inferSteamAppIdFromParsed(parsed) {
     const ids = new Set();
     for (const entry of parsed.agg.values()) {
@@ -341,17 +477,46 @@ export async function POST(request, ctx) {
     const mappedSteamAppId = typeof mappedMeta?.steam_app_id === 'string' ? mappedMeta.steam_app_id : String(mappedMeta?.steam_app_id || '');
     // Parse and aggregate (we use this both for inference and for ingestion).
     let parsed;
-    try {
-        parsed = parseSteamDailySales(content, mappedSteamAppId.trim());
+    if (ingestorId === 'steam-sales') {
+        try {
+            parsed = parseSteamDailySales(content, mappedSteamAppId.trim());
+        }
+        catch (e) {
+            return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
+        }
+        // Prefer inferred app_id from CSV contents (Steam exports usually include ProductID).
+        // Fall back to filename mapping metadata for older/odd exports.
+        steamAppId = inferSteamAppIdFromParsed(parsed) || mappedSteamAppId.trim();
+        if (!steamAppId) {
+            return jsonError(`Could not determine steam_app_id for upload "${fileName}". Either add a mapping in metrics_links (link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id), or ensure the CSV includes a ProductID column with a single Steam App ID.`, 400);
+        }
     }
-    catch (e) {
-        return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
+    else if (ingestorId === 'steam-wishlist') {
+        steamAppId = mappedSteamAppId.trim();
+        if (!steamAppId) {
+            return jsonError(`Missing steam_app_id mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id="<steam_app_id>".`, 400);
+        }
+        try {
+            parsed = parseSteamDailyWishlist(content, steamAppId);
+        }
+        catch (e) {
+            return jsonError(e instanceof Error ? e.message : 'Failed to parse wishlist CSV', 400);
+        }
     }
-    // Prefer inferred app_id from CSV contents (Steam exports usually include ProductID).
-    // Fall back to filename mapping metadata for older/odd exports.
-    steamAppId = inferSteamAppIdFromParsed(parsed) || mappedSteamAppId.trim();
-    if (!steamAppId) {
-        return jsonError(`Could not determine steam_app_id for upload "${fileName}". Either add a mapping in metrics_links (link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id), or ensure the CSV includes a ProductID column with a single Steam App ID.`, 400);
+    else if (ingestorId === 'steam-playerdata') {
+        steamAppId = mappedSteamAppId.trim();
+        if (!steamAppId) {
+            return jsonError(`Missing steam_app_id mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.steam_app_id="<steam_app_id>".`, 400);
+        }
+        try {
+            parsed = parseSteamDailyPlayerData(content, steamAppId);
+        }
+        catch (e) {
+            return jsonError(e instanceof Error ? e.message : 'Failed to parse player data CSV', 400);
+        }
+    }
+    else {
+        return jsonError(`Unsupported ingestor for CSV upload: ${ingestorId}`, 400);
     }
     // Resolve steam_app_id -> project (and optional grouping metadata) via metrics_links.
     let steamAppLinks = await db
@@ -442,6 +607,9 @@ export async function POST(request, ctx) {
     });
     // Build points list and upsert in chunks.
     const values = [];
+    const wishlistNetByDay = new Map();
+    let wishlistBaseDimensionsHash = null;
+    let wishlistBaseDimensions = null;
     for (const entry of parsed.agg.values()) {
         const day = entry.date;
         const dims = {
@@ -470,6 +638,46 @@ export async function POST(request, ctx) {
                 id: `mp_${cryptoRandomId()}`,
                 metricKey,
                 value: String(value),
+            });
+        }
+        if (ingestorId === 'steam-wishlist') {
+            const dayKey = day.toISOString().slice(0, 10);
+            const net = Number(entry.sums?.wishlist_net_change ?? 0);
+            wishlistNetByDay.set(dayKey, Number.isFinite(net) ? net : 0);
+            wishlistBaseDimensionsHash = dimensionsHash;
+            wishlistBaseDimensions = dims;
+        }
+    }
+    // Derived metric: wishlist_cumulative_total.
+    // Compute it in the upload handler so it stays consistent across multiple uploads/backfills.
+    if (ingestorId === 'steam-wishlist' && wishlistNetByDay.size > 0 && wishlistBaseDimensionsHash && wishlistBaseDimensions) {
+        const rows = await db
+            .select({
+            s: sql `COALESCE(SUM(CAST(${metricsMetricPoints.value} AS NUMERIC)), 0)`.as('s'),
+        })
+            .from(metricsMetricPoints)
+            .where(and(eq(metricsMetricPoints.dataSourceId, ds.id), eq(metricsMetricPoints.entityKind, entityKind), eq(metricsMetricPoints.entityId, entityId), eq(metricsMetricPoints.metricKey, 'wishlist_net_change'), sql `${metricsMetricPoints.date} < ${minDate}`, eq(metricsMetricPoints.dimensionsHash, wishlistBaseDimensionsHash)))
+            .limit(1);
+        const base = Number(rows?.[0]?.s ?? 0);
+        let running = Number.isFinite(base) ? base : 0;
+        const days = Array.from(wishlistNetByDay.keys()).sort();
+        for (const day of days) {
+            running += wishlistNetByDay.get(day) || 0;
+            const dt = new Date(`${day}T00:00:00.000Z`);
+            values.push({
+                id: `mp_${cryptoRandomId()}`,
+                entityKind,
+                entityId,
+                dataSourceId: ds.id,
+                date: dt,
+                granularity: 'daily',
+                dimensions: wishlistBaseDimensions,
+                dimensionsHash: wishlistBaseDimensionsHash,
+                ingestBatchId,
+                createdAt: now,
+                updatedAt: now,
+                metricKey: 'wishlist_cumulative_total',
+                value: String(running),
             });
         }
     }

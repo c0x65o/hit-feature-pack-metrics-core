@@ -162,7 +162,7 @@ function requiredPartnerFields(partnerId: string) {
 function resolveIngestorTask(
   spec: IngestorConfig['tasks'] extends infer T ? any : any,
   fallbackName: string,
-): { name: string; command: string; description: string | null; cron?: string | null } | null {
+): { name: string; command: string; description: string | null; cron?: string | null; service_name?: string | null } | null {
   if (!spec) return null;
   if (typeof spec === 'string') return null; // legacy reference to hit.yaml task name
   if (typeof spec !== 'object') return null;
@@ -171,7 +171,8 @@ function resolveIngestorTask(
   const name = typeof spec.name === 'string' && spec.name.trim() ? spec.name.trim() : fallbackName;
   const description = typeof spec.description === 'string' ? spec.description : null;
   const cron = typeof spec.cron === 'string' && spec.cron.trim() ? spec.cron.trim() : null;
-  return { name, command: cmd, description, cron };
+  const service_name = typeof spec.service_name === 'string' && spec.service_name.trim() ? spec.service_name.trim() : null;
+  return { name, command: cmd, description, cron, service_name };
 }
 
 async function computeProviderRow(cfg: IngestorConfig) {

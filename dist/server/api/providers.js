@@ -137,7 +137,8 @@ function resolveIngestorTask(spec, fallbackName) {
     const name = typeof spec.name === 'string' && spec.name.trim() ? spec.name.trim() : fallbackName;
     const description = typeof spec.description === 'string' ? spec.description : null;
     const cron = typeof spec.cron === 'string' && spec.cron.trim() ? spec.cron.trim() : null;
-    return { name, command: cmd, description, cron };
+    const service_name = typeof spec.service_name === 'string' && spec.service_name.trim() ? spec.service_name.trim() : null;
+    return { name, command: cmd, description, cron, service_name };
 }
 async function computeProviderRow(cfg) {
     const db = getDb();

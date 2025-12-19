@@ -88,7 +88,8 @@ function resolveIngestorTask(spec, fallbackName) {
     const name = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : fallbackName;
     const description = typeof rec.description === 'string' ? rec.description : null;
     const cron = typeof rec.cron === 'string' && rec.cron.trim() ? rec.cron.trim() : null;
-    return { name, command: cmd, description, cron };
+    const service_name = typeof rec.service_name === 'string' && rec.service_name.trim() ? rec.service_name.trim() : null;
+    return { name, command: cmd, description, cron, service_name };
 }
 export async function GET(request, ctx) {
     const auth = getAuthContext(request);

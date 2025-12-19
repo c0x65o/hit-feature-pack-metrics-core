@@ -111,7 +111,10 @@ function listBackfillFilenames(cfg: IngestorConfig, limit = 2000): string[] {
     .slice(0, limit);
 }
 
-function resolveIngestorTask(spec: unknown, fallbackName: string): { name: string; command: string; description: string | null; cron?: string | null } | null {
+function resolveIngestorTask(
+  spec: unknown,
+  fallbackName: string,
+): { name: string; command: string; description: string | null; cron?: string | null; service_name?: string | null } | null {
   if (!spec) return null;
   if (typeof spec === 'string') return null; // legacy reference to hit.yaml
   if (typeof spec !== 'object' || Array.isArray(spec)) return null;
@@ -121,7 +124,8 @@ function resolveIngestorTask(spec: unknown, fallbackName: string): { name: strin
   const name = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : fallbackName;
   const description = typeof rec.description === 'string' ? rec.description : null;
   const cron = typeof rec.cron === 'string' && rec.cron.trim() ? rec.cron.trim() : null;
-  return { name, command: cmd, description, cron };
+  const service_name = typeof rec.service_name === 'string' && rec.service_name.trim() ? rec.service_name.trim() : null;
+  return { name, command: cmd, description, cron, service_name };
 }
 
 export async function GET(request: NextRequest, ctx: { params: { id: string } }) {
