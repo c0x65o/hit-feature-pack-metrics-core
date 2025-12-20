@@ -12,6 +12,8 @@ type MetricStatus = {
   unit: string;
   category?: string;
   description?: string;
+  icon?: string;
+  icon_color?: string;
   rollup_strategy?: string;
   time_kind?: 'timeseries' | 'realtime' | 'none';
   default_granularity?: string;
@@ -117,6 +119,8 @@ export async function GET() {
       unit: cfg.unit || 'count',
       category: cfg.category,
       description: cfg.description,
+      icon: typeof cfg.icon === 'string' ? cfg.icon : undefined,
+      icon_color: typeof cfg.icon_color === 'string' ? cfg.icon_color : undefined,
       rollup_strategy: cfg.rollup_strategy,
       time_kind:
         cfg.time_kind === 'realtime' || cfg.time_kind === 'none' || cfg.time_kind === 'timeseries'

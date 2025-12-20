@@ -7,6 +7,8 @@ type MetricStatus = {
     unit: string;
     category?: string;
     description?: string;
+    icon?: string;
+    icon_color?: string;
     rollup_strategy?: string;
     time_kind?: 'timeseries' | 'realtime' | 'none';
     default_granularity?: string;
