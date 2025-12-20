@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.30",
+  "version": "1.0.31",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -58,8 +58,8 @@
   },
   "peerDependencies": {
     "@hit/ui-kit": "*",
-    "react": "^18.0.0 || ^19.0.0",
-    "next": "^14.0.0 || ^15.0.0",
+    "react": "^18.0.0",
+    "next": "^14.0.0",
     "@hit/sdk": "*",
     "lucide-react": ">=0.263.0",
     "drizzle-orm": ">=0.30.0"
