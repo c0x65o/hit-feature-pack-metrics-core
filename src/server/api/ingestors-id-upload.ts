@@ -396,6 +396,38 @@ function deterministicProjectUuidFromLegacyId(oldId: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
+async function inferSteamAppIdFromStorefrontsByProject(args: { db: any; projectId: string }): Promise<string | null> {
+  const { db, projectId } = args;
+  const STORE_FRONTS_FORM_ID = 'form_storefronts';
+
+  // Find storefront entries with platform=steam, and match their embedded project reference to this projectId.
+  const rows = await db
+    .select({
+      data: formEntries.data,
+    })
+    .from(formEntries)
+    .where(and(eq(formEntries.formId, STORE_FRONTS_FORM_ID), sql`(${formEntries.data}->>'platform') = 'steam'`) as any)
+    .limit(200);
+
+  const appIds = new Set<string>();
+  for (const r of rows as any[]) {
+    const data = (r?.data || {}) as any;
+    const isActive = data.is_active === undefined ? true : Boolean(data.is_active);
+    if (!isActive) continue;
+    const proj = data.project;
+    const rawProjectId = proj && typeof proj === 'object' && typeof proj.entityId === 'string' ? String(proj.entityId) : '';
+    if (!rawProjectId) continue;
+    const normalized = isUuidLike(rawProjectId) ? rawProjectId : deterministicProjectUuidFromLegacyId(rawProjectId);
+    if (normalized !== projectId) continue;
+
+    const storeId = typeof data.store_id === 'string' ? data.store_id.trim() : '';
+    if (storeId) appIds.add(storeId);
+  }
+
+  if (appIds.size === 1) return Array.from(appIds)[0]!;
+  return null;
+}
+
 async function tryUpsertSteamAppLinkFromStorefronts(args: { db: any; steamAppId: string; now: Date }) {
   const { db, steamAppId, now } = args;
   const STORE_FRONTS_FORM_ID = 'form_storefronts';
@@ -562,24 +594,38 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
     );
   }
 
-  // For Steam file ingestors, treat steam app id as a dimension only.
-  const fallbackSteamAppIdForDims = '';
+  // For Steam wishlist/playerdata ingestors, steam_app_id is required for:
+  // - stable per-app data_source IDs (overlap policy isolation)
+  // - future per-storefront filtering
+  //
+  // We do NOT use steam_app_id as the entity link (entity is always the project),
+  // but we still want it as a dimension.
+  const steamAppIdHint =
+    typeof mappedMeta?.steam_app_id === 'string'
+      ? mappedMeta.steam_app_id.trim()
+      : typeof mappedMeta?.steamAppId === 'string'
+        ? mappedMeta.steamAppId.trim()
+        : '';
+  const inferredSteamAppIdForDims =
+    steamAppIdHint ||
+    (linkedProjectId ? await inferSteamAppIdFromStorefrontsByProject({ db, projectId: linkedProjectId }) : null) ||
+    '';
 
   if (ingestorId === 'steam-sales') {
     try {
-      parsed = parseSteamDailySales(content, fallbackSteamAppIdForDims);
+      parsed = parseSteamDailySales(content, '');
     } catch (e) {
       return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
     }
   } else if (ingestorId === 'steam-wishlist') {
     try {
-      parsed = parseSteamDailyWishlist(content, '');
+      parsed = parseSteamDailyWishlist(content, inferredSteamAppIdForDims);
     } catch (e) {
       return jsonError(e instanceof Error ? e.message : 'Failed to parse wishlist CSV', 400);
     }
   } else if (ingestorId === 'steam-playerdata') {
     try {
-      parsed = parseSteamDailyPlayerData(content, '');
+      parsed = parseSteamDailyPlayerData(content, inferredSteamAppIdForDims);
     } catch (e) {
       return jsonError(e instanceof Error ? e.message : 'Failed to parse player data CSV', 400);
     }
@@ -734,7 +780,7 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
       .from(metricsMetricPoints as any)
       .where(
         and(
-          eq((metricsMetricPoints as any).dataSourceId, ds.id),
+          eq((metricsMetricPoints as any).dataSourceId, dsId),
           eq((metricsMetricPoints as any).entityKind, entityKind),
           eq((metricsMetricPoints as any).entityId, entityId),
           eq((metricsMetricPoints as any).metricKey, 'wishlist_net_change'),
@@ -754,7 +800,7 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
         id: `mp_${cryptoRandomId()}`,
         entityKind,
         entityId,
-        dataSourceId: ds.id,
+        dataSourceId: dsId,
         date: dt,
         granularity: 'daily',
         dimensions: wishlistBaseDimensions,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
-import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ function jsonError(message: string, status = 400) {
 }
 
 type Bucket = 'none' | 'hour' | 'day' | 'week' | 'month';
-type Agg = 'sum' | 'avg' | 'min' | 'max' | 'count';
+type Agg = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
 
 type QueryBody = {
   metricKey: string;
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
   }
 
   const agg: Agg = body.agg || 'sum';
-  if (!['sum', 'avg', 'min', 'max', 'count'].includes(agg)) return jsonError(`Invalid agg: ${agg}`, 400);
+  if (!['sum', 'avg', 'min', 'max', 'count', 'last'].includes(agg)) return jsonError(`Invalid agg: ${agg}`, 400);
 
   const groupBy = Array.isArray(body.groupBy) ? body.groupBy : [];
   for (const k of groupBy) {
@@ -109,6 +109,9 @@ export async function POST(request: NextRequest) {
 
   const groupByEntityId = Boolean(body.groupByEntityId);
 
+  // For most aggs, we can use normal SQL aggregation.
+  // For `last`, we want the most recent point by date within each bucket/group.
+  const isLast = agg === 'last';
   const aggExpr =
     agg === 'sum'
       ? sql`sum(${metricsMetricPoints.value})`
@@ -120,11 +123,9 @@ export async function POST(request: NextRequest) {
             ? sql`max(${metricsMetricPoints.value})`
             : sql`count(*)`;
 
-  const aggAliased = aggExpr.as('value');
-
   const groupExprs = groupBy.map((k) => sql`${metricsMetricPoints.dimensions} ->> ${k}`.as(k));
   const selectShape: Record<string, unknown> = {
-    value: aggAliased as any,
+    value: isLast ? (metricsMetricPoints.value as any) : (aggExpr.as('value') as any),
     ...Object.fromEntries(groupBy.map((k, idx) => [k, groupExprs[idx]])),
   };
   const groupByExprs: any[] = [...groupExprs];
@@ -146,6 +147,67 @@ export async function POST(request: NextRequest) {
     if (groupByEntityId) orderByExprs.push(metricsMetricPoints.entityId as any);
   }
   for (const ge of groupExprs) orderByExprs.push(ge as any);
+
+  if (isLast) {
+    // "last" = most recent point by date within each bucket/group.
+    // Implemented via row_number() window + filter rn=1 (portable within Postgres).
+    const bucketExprRaw = bucket !== 'none' ? sql`date_trunc(${bucket}, ${metricsMetricPoints.date})` : null;
+    const dimExprsRaw = groupBy.map((k) => sql`${metricsMetricPoints.dimensions} ->> ${k}`);
+
+    const partitionExprs: any[] = [];
+    if (bucketExprRaw) partitionExprs.push(bucketExprRaw);
+    if (groupByEntityId) partitionExprs.push(metricsMetricPoints.entityId as any);
+    for (const de of dimExprsRaw) partitionExprs.push(de as any);
+
+    // row_number over each series, newest first
+    const rnExpr = sql<number>`row_number() over (partition by ${sql.join(partitionExprs, sql`, `)} order by ${metricsMetricPoints.date} desc)`.as('rn');
+
+    const baseSelect: Record<string, unknown> = {
+      value: metricsMetricPoints.value as any,
+      rn: rnExpr as any,
+    };
+    if (bucketExprRaw) (baseSelect as any).bucket = bucketExprRaw.as('bucket');
+    if (groupByEntityId) (baseSelect as any).entityId = metricsMetricPoints.entityId;
+    for (let i = 0; i < groupBy.length; i++) {
+      const k = groupBy[i];
+      (baseSelect as any)[k] = dimExprsRaw[i].as(k);
+    }
+
+    const base = db
+      .select(baseSelect as any)
+      .from(metricsMetricPoints)
+      .where(and(...whereParts))
+      .as('mp');
+
+    const outSelect: Record<string, unknown> = { value: (base as any).value };
+    if (bucketExprRaw) (outSelect as any).bucket = (base as any).bucket;
+    if (groupByEntityId) (outSelect as any).entityId = (base as any).entityId;
+    for (const k of groupBy) (outSelect as any)[k] = (base as any)[k];
+
+    const outOrder: any[] = [];
+    if (bucketExprRaw) outOrder.push(asc((base as any).bucket));
+    if (groupByEntityId) outOrder.push(asc((base as any).entityId));
+    for (const k of groupBy) outOrder.push(asc((base as any)[k]));
+
+    const rows = await db
+      .select(outSelect as any)
+      .from(base as any)
+      .where(eq((base as any).rn, 1))
+      .orderBy(...outOrder);
+
+    return NextResponse.json({
+      data: rows,
+      meta: {
+        metricKey,
+        start: start ? start.toISOString() : null,
+        end: end ? end.toISOString() : null,
+        bucket,
+        agg,
+        groupBy,
+        groupByEntityId,
+      },
+    });
+  }
 
   const rows = await db.select(selectShape as any).from(metricsMetricPoints).where(and(...whereParts)).groupBy(...groupByExprs).orderBy(...orderByExprs);
 

@@ -355,6 +355,38 @@ function deterministicProjectUuidFromLegacyId(oldId) {
     const hex = crypto.createHash('md5').update(`${oldId}projects`).digest('hex');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
+async function inferSteamAppIdFromStorefrontsByProject(args) {
+    const { db, projectId } = args;
+    const STORE_FRONTS_FORM_ID = 'form_storefronts';
+    // Find storefront entries with platform=steam, and match their embedded project reference to this projectId.
+    const rows = await db
+        .select({
+        data: formEntries.data,
+    })
+        .from(formEntries)
+        .where(and(eq(formEntries.formId, STORE_FRONTS_FORM_ID), sql `(${formEntries.data}->>'platform') = 'steam'`))
+        .limit(200);
+    const appIds = new Set();
+    for (const r of rows) {
+        const data = (r?.data || {});
+        const isActive = data.is_active === undefined ? true : Boolean(data.is_active);
+        if (!isActive)
+            continue;
+        const proj = data.project;
+        const rawProjectId = proj && typeof proj === 'object' && typeof proj.entityId === 'string' ? String(proj.entityId) : '';
+        if (!rawProjectId)
+            continue;
+        const normalized = isUuidLike(rawProjectId) ? rawProjectId : deterministicProjectUuidFromLegacyId(rawProjectId);
+        if (normalized !== projectId)
+            continue;
+        const storeId = typeof data.store_id === 'string' ? data.store_id.trim() : '';
+        if (storeId)
+            appIds.add(storeId);
+    }
+    if (appIds.size === 1)
+        return Array.from(appIds)[0];
+    return null;
+}
 async function tryUpsertSteamAppLinkFromStorefronts(args) {
     const { db, steamAppId, now } = args;
     const STORE_FRONTS_FORM_ID = 'form_storefronts';
@@ -499,11 +531,23 @@ export async function POST(request, ctx) {
     else {
         return jsonError(`Missing project_slug mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.project_slug="<project slug>".`, 400);
     }
-    // For Steam file ingestors, treat steam app id as a dimension only.
-    const fallbackSteamAppIdForDims = '';
+    // For Steam wishlist/playerdata ingestors, steam_app_id is required for:
+    // - stable per-app data_source IDs (overlap policy isolation)
+    // - future per-storefront filtering
+    //
+    // We do NOT use steam_app_id as the entity link (entity is always the project),
+    // but we still want it as a dimension.
+    const steamAppIdHint = typeof mappedMeta?.steam_app_id === 'string'
+        ? mappedMeta.steam_app_id.trim()
+        : typeof mappedMeta?.steamAppId === 'string'
+            ? mappedMeta.steamAppId.trim()
+            : '';
+    const inferredSteamAppIdForDims = steamAppIdHint ||
+        (linkedProjectId ? await inferSteamAppIdFromStorefrontsByProject({ db, projectId: linkedProjectId }) : null) ||
+        '';
     if (ingestorId === 'steam-sales') {
         try {
-            parsed = parseSteamDailySales(content, fallbackSteamAppIdForDims);
+            parsed = parseSteamDailySales(content, '');
         }
         catch (e) {
             return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
@@ -511,7 +555,7 @@ export async function POST(request, ctx) {
     }
     else if (ingestorId === 'steam-wishlist') {
         try {
-            parsed = parseSteamDailyWishlist(content, '');
+            parsed = parseSteamDailyWishlist(content, inferredSteamAppIdForDims);
         }
         catch (e) {
             return jsonError(e instanceof Error ? e.message : 'Failed to parse wishlist CSV', 400);
@@ -519,7 +563,7 @@ export async function POST(request, ctx) {
     }
     else if (ingestorId === 'steam-playerdata') {
         try {
-            parsed = parseSteamDailyPlayerData(content, '');
+            parsed = parseSteamDailyPlayerData(content, inferredSteamAppIdForDims);
         }
         catch (e) {
             return jsonError(e instanceof Error ? e.message : 'Failed to parse player data CSV', 400);
@@ -649,7 +693,7 @@ export async function POST(request, ctx) {
             s: sql `COALESCE(SUM(CAST(${metricsMetricPoints.value} AS NUMERIC)), 0)`.as('s'),
         })
             .from(metricsMetricPoints)
-            .where(and(eq(metricsMetricPoints.dataSourceId, ds.id), eq(metricsMetricPoints.entityKind, entityKind), eq(metricsMetricPoints.entityId, entityId), eq(metricsMetricPoints.metricKey, 'wishlist_net_change'), sql `${metricsMetricPoints.date} < ${minDate}`, eq(metricsMetricPoints.dimensionsHash, wishlistBaseDimensionsHash)))
+            .where(and(eq(metricsMetricPoints.dataSourceId, dsId), eq(metricsMetricPoints.entityKind, entityKind), eq(metricsMetricPoints.entityId, entityId), eq(metricsMetricPoints.metricKey, 'wishlist_net_change'), sql `${metricsMetricPoints.date} < ${minDate}`, eq(metricsMetricPoints.dimensionsHash, wishlistBaseDimensionsHash)))
             .limit(1);
         const base = Number(rows?.[0]?.s ?? 0);
         let running = Number.isFinite(base) ? base : 0;
@@ -661,7 +705,7 @@ export async function POST(request, ctx) {
                 id: `mp_${cryptoRandomId()}`,
                 entityKind,
                 entityId,
-                dataSourceId: ds.id,
+                dataSourceId: dsId,
                 date: dt,
                 granularity: 'daily',
                 dimensions: wishlistBaseDimensions,
