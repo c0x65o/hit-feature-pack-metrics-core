@@ -62,6 +62,47 @@ function parseArgs(argv) {
 function stripTrailingSlash(url) {
     return url.endsWith('/') ? url.slice(0, -1) : url;
 }
+function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+}
+function looksLikeNextTransientHtml(body) {
+    const b = (body || '').toLowerCase();
+    return (b.includes('<!doctype html') ||
+        b.includes('<html') ||
+        b.includes('page not found') ||
+        b.includes('missing required error components') ||
+        b.includes('refreshing'));
+}
+async function fetchWithRetry(url, init, opts) {
+    const retries = Math.max(0, opts?.retries ?? 6);
+    const baseDelayMs = Math.max(50, opts?.baseDelayMs ?? 250);
+    let lastRes = null;
+    let lastBody = '';
+    let lastErr = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const res = await fetch(url, init);
+            const bodyText = await res.text().catch(() => '');
+            lastRes = res;
+            lastBody = bodyText;
+            if (res.ok)
+                return { res, bodyText };
+            const transient = (res.status === 404 || res.status === 500 || res.status === 502 || res.status === 503) && looksLikeNextTransientHtml(bodyText);
+            if (!transient)
+                return { res, bodyText };
+        }
+        catch (e) {
+            lastErr = e;
+        }
+        if (attempt < retries) {
+            // Cap backoff so dev-server rebuilds can be waited out without turning into multi-minute sleeps.
+            await sleep(Math.min(baseDelayMs * (attempt + 1), 2000));
+        }
+    }
+    if (lastRes)
+        return { res: lastRes, bodyText: lastBody };
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'fetch failed'));
+}
 function ingestorYamlPath(ingestorId) {
     return path.join(process.cwd(), '.hit', 'metrics', 'ingestors', `${ingestorId}.yaml`);
 }
@@ -103,19 +144,29 @@ async function validateMappings(args, cfg, fileNames) {
     const missing = [];
     for (const name of fileNames) {
         const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/links?linkType=${encodeURIComponent(linkType)}&q=${encodeURIComponent(name)}&limit=500`;
-        const res = await fetch(url, {
-            method: 'GET',
-            headers: { 'X-HIT-Service-Token': args.serviceToken },
-        });
+        const { res, bodyText } = await fetchWithRetry(url, { method: 'GET', headers: { 'X-HIT-Service-Token': args.serviceToken } }, { retries: 20, baseDelayMs: 300 });
         if (!res.ok) {
-            const body = await res.text().catch(() => '');
+            // Next dev server can temporarily return HTML 404/500 while recompiling.
+            // In that case, skip validation and let the upload step be the source of truth.
+            if (looksLikeNextTransientHtml(bodyText)) {
+                console.warn(`Warning: skipping mapping validation because ${url} returned ${res.status} during a transient Next build/reload.\n` +
+                    `Uploads will still enforce mapping targets server-side.`);
+                return;
+            }
             // This usually indicates the app server isn't running (or its dev build is broken),
             // because this CLI relies on the app's API endpoints.
             throw new Error(`Mapping validation failed (${res.status}) for ${url}\n` +
                 `Make sure the hit-dashboard web server is running and healthy, then re-run this task.\n` +
-                `Response body:\n${body}`);
+                `Response body:\n${bodyText}`);
         }
-        const json = (await res.json().catch(() => null));
+        const json = (() => {
+            try {
+                return JSON.parse(bodyText);
+            }
+            catch {
+                return null;
+            }
+        })();
         const rows = Array.isArray(json?.data) ? json.data : [];
         const exact = rows.some((r) => r?.linkId === name);
         if (!exact)
@@ -134,12 +185,8 @@ async function uploadOne(args, ingestorId, filePath) {
     form.append('file', new Blob([buf], { type: 'text/csv' }), name);
     if (args.overwrite)
         form.append('overwrite', 'true');
-    const res = await fetch(`${stripTrailingSlash(args.baseUrl)}/api/metrics/ingestors/${encodeURIComponent(ingestorId)}/upload`, {
-        method: 'POST',
-        headers: { 'X-HIT-Service-Token': args.serviceToken },
-        body: form,
-    });
-    const text = await res.text().catch(() => '');
+    const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/ingestors/${encodeURIComponent(ingestorId)}/upload`;
+    const { res, bodyText: text } = await fetchWithRetry(url, { method: 'POST', headers: { 'X-HIT-Service-Token': args.serviceToken }, body: form }, { retries: 20, baseDelayMs: 400 });
     if (!res.ok) {
         // Treat overlap-policy skips as non-fatal so backfills can be re-run safely.
         // The API returns 409 with a human-readable "skipped" message.
