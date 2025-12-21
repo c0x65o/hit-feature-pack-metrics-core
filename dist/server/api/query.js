@@ -145,7 +145,9 @@ export async function POST(request) {
         for (const de of dimExprsRaw)
             partitionExprs.push(de);
         // row_number over each series, newest first
-        const rnExpr = sql `row_number() over (partition by ${sql.join(partitionExprs, sql `, `)} order by ${metricsMetricPoints.date} desc)`.as('rn');
+        const rnExpr = partitionExprs.length > 0
+            ? sql `row_number() over (partition by ${sql.join(partitionExprs, sql `, `)} order by ${metricsMetricPoints.date} desc)`.as('rn')
+            : sql `row_number() over (order by ${metricsMetricPoints.date} desc)`.as('rn');
         const baseSelect = {
             value: metricsMetricPoints.value,
             rn: rnExpr,
