@@ -2,6 +2,7 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React from 'react';
 import { Button, Card } from '@hit/ui-kit';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 function SourceChip(props) {
     const owner = props.owner;
     const kind = owner?.kind;
@@ -21,12 +22,32 @@ function SourceChip(props) {
                 : '—';
     return _jsx("span", { className: `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${className}`, children: text });
 }
+function sourceKey(owner) {
+    if (owner?.kind === 'feature_pack')
+        return `fp:${owner.id}`;
+    if (owner?.kind === 'app')
+        return 'app';
+    if (owner?.kind === 'user')
+        return 'user';
+    return '—';
+}
+function sourceLabel(owner) {
+    if (owner?.kind === 'feature_pack')
+        return `Feature pack: ${owner.id}`;
+    if (owner?.kind === 'app')
+        return 'App';
+    if (owner?.kind === 'user')
+        return `User: ${owner.id}`;
+    return '—';
+}
 export function Definitions() {
     const [items, setItems] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState(null);
     const [message, setMessage] = React.useState(null);
     const [selectedSources, setSelectedSources] = React.useState(new Set());
+    const [groupedView, setGroupedView] = React.useState(true);
+    const [expandedGroups, setExpandedGroups] = React.useState(new Set());
     async function refresh() {
         try {
             setLoading(true);
@@ -55,13 +76,7 @@ export function Definitions() {
         if (items.length > 0 && selectedSources.size === 0) {
             const allSources = new Set();
             for (const item of items) {
-                const source = item.owner?.kind === 'feature_pack'
-                    ? `fp:${item.owner.id}`
-                    : item.owner?.kind === 'app'
-                        ? 'app'
-                        : item.owner?.kind === 'user'
-                            ? 'user'
-                            : '—';
+                const source = sourceKey(item.owner);
                 allSources.add(source);
             }
             setSelectedSources(allSources);
@@ -71,13 +86,7 @@ export function Definitions() {
     const availableSources = React.useMemo(() => {
         const sources = new Set();
         for (const item of items) {
-            const source = item.owner?.kind === 'feature_pack'
-                ? `fp:${item.owner.id}`
-                : item.owner?.kind === 'app'
-                    ? 'app'
-                    : item.owner?.kind === 'user'
-                        ? 'user'
-                        : '—';
+            const source = sourceKey(item.owner);
             sources.add(source);
         }
         return Array.from(sources).sort();
@@ -87,13 +96,7 @@ export function Definitions() {
         if (selectedSources.size === 0)
             return items;
         return items.filter((item) => {
-            const source = item.owner?.kind === 'feature_pack'
-                ? `fp:${item.owner.id}`
-                : item.owner?.kind === 'app'
-                    ? 'app'
-                    : item.owner?.kind === 'user'
-                        ? 'user'
-                        : '—';
+            const source = sourceKey(item.owner);
             return selectedSources.has(source);
         });
     }, [items, selectedSources]);
@@ -106,6 +109,33 @@ export function Definitions() {
             else {
                 next.add(source);
             }
+            return next;
+        });
+    }
+    const groupedItems = React.useMemo(() => {
+        const groups = new Map();
+        for (const it of filteredItems) {
+            const k = sourceKey(it.owner);
+            const g = groups.get(k) || { key: k, owner: it.owner, items: [], pointsSum: 0 };
+            // Prefer first non-empty owner metadata
+            if (!g.owner && it.owner)
+                g.owner = it.owner;
+            g.items.push(it);
+            g.pointsSum += Number(it.pointsCount || 0) || 0;
+            groups.set(k, g);
+        }
+        const out = Array.from(groups.values()).sort((a, b) => a.key.localeCompare(b.key));
+        for (const g of out)
+            g.items.sort((a, b) => a.key.localeCompare(b.key));
+        return out;
+    }, [filteredItems]);
+    function toggleGroup(k) {
+        setExpandedGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(k))
+                next.delete(k);
+            else
+                next.add(k);
             return next;
         });
     }
@@ -131,9 +161,12 @@ export function Definitions() {
                         return (_jsxs("label", { className: `inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition-all ${isSelected
                                 ? className
                                 : 'bg-gray-50 text-gray-600 dark:bg-gray-800 dark:text-gray-400 border-gray-200 dark:border-gray-700 opacity-60 hover:opacity-100'}`, children: [_jsx("input", { type: "checkbox", checked: isSelected, onChange: () => toggleSource(source), className: "w-3 h-3 rounded border-gray-300 text-current focus:ring-2 focus:ring-current" }), _jsx(SourceChip, { owner: owner })] }, source));
-                    }) }) })), _jsx(Card, { title: `Configured metrics (${filteredItems.length}${filteredItems.length !== items.length ? ` of ${items.length}` : ''})`, description: "Read-only. Configure metrics via feature-pack.yaml or .hit/metrics/definitions and run `hit run`.", children: loading ? (_jsx("div", { className: "text-sm text-muted-foreground", children: "Loading\u2026" })) : filteredItems.length === 0 ? (_jsx("div", { className: "text-sm text-muted-foreground", children: items.length === 0 ? 'No definitions yet.' : 'No metrics match the selected filters.' })) : (_jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "w-full text-sm", children: [_jsx("thead", { children: _jsxs("tr", { className: "border-b text-left text-muted-foreground", children: [_jsx("th", { className: "py-3 pr-4 font-medium", children: "Source" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Metric Key" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Label" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Unit" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Owner" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Rollup" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Granularity" }), _jsx("th", { className: "py-3 pr-4 font-medium text-right", children: "Points" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "First" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Last" }), _jsx("th", { className: "py-3 font-medium", children: "Updated" })] }) }), _jsx("tbody", { children: filteredItems
-                                    .slice()
-                                    .sort((a, b) => a.key.localeCompare(b.key))
-                                    .map((d) => (_jsxs("tr", { className: "border-b hover:bg-muted/50 transition-colors", children: [_jsx("td", { className: "py-3 pr-4", children: _jsx(SourceChip, { owner: d.owner }) }), _jsx("td", { className: "py-3 pr-4", children: _jsx("code", { className: "text-xs bg-muted px-1.5 py-0.5 rounded font-mono", children: d.key }) }), _jsx("td", { className: "py-3 pr-4 font-medium", children: d.label }), _jsx("td", { className: "py-3 pr-4", children: _jsx("span", { className: "inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300", children: d.unit }) }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.owner ? (_jsxs("code", { className: "text-xs bg-muted px-1.5 py-0.5 rounded font-mono", children: [d.owner.kind, ":", d.owner.id] })) : ('—') }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.rollup_strategy || '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.time_kind === 'realtime' ? (_jsx("span", { className: "inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300", children: "realtime" })) : d.time_kind === 'none' ? (_jsx("span", { className: "inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300", children: "n/a" })) : d.default_granularity ? (_jsxs("span", { className: "inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300", children: [d.default_granularity, Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (_jsxs("span", { className: "ml-1 text-slate-500 dark:text-slate-400", children: ["(", d.allowed_granularities.join(','), ")"] })) : null] })) : ('—') }), _jsx("td", { className: "py-3 pr-4 text-right tabular-nums", children: d.pointsCount > 0 ? (_jsx("span", { className: "text-green-600 dark:text-green-400 font-medium", children: d.pointsCount.toLocaleString() })) : (_jsx("span", { className: "text-muted-foreground", children: "0" })) }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—' }), _jsx("td", { className: "py-3 text-muted-foreground tabular-nums", children: d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—' })] }, d.key))) })] }) })) })] }));
+                    }) }) })), _jsx(Card, { title: `Configured metrics (${filteredItems.length}${filteredItems.length !== items.length ? ` of ${items.length}` : ''})`, description: "Read-only. Configure metrics via feature-pack.yaml or .hit/metrics/definitions and run `hit run`.", children: loading ? (_jsx("div", { className: "text-sm text-muted-foreground", children: "Loading\u2026" })) : filteredItems.length === 0 ? (_jsx("div", { className: "text-sm text-muted-foreground", children: items.length === 0 ? 'No definitions yet.' : 'No metrics match the selected filters.' })) : (_jsxs("div", { className: "space-y-4", children: [_jsxs("div", { className: "flex items-center justify-between gap-3", children: [_jsx("div", { className: "text-xs text-muted-foreground", children: "Tip: this view is now grouped by source/owner to reduce noise." }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsx(Button, { variant: groupedView ? 'primary' : 'secondary', onClick: () => setGroupedView(true), children: "Grouped" }), _jsx(Button, { variant: !groupedView ? 'primary' : 'secondary', onClick: () => setGroupedView(false), children: "Flat" })] })] }), groupedView ? (_jsx("div", { className: "space-y-3", children: groupedItems.map((g) => {
+                                const isOpen = expandedGroups.has(g.key);
+                                return (_jsxs("div", { className: "border rounded-lg", children: [_jsx("button", { type: "button", onClick: () => toggleGroup(g.key), className: "w-full flex items-center justify-between gap-3 px-4 py-3 text-left", children: _jsxs("div", { className: "flex items-center gap-2 min-w-0", children: [isOpen ? _jsx(ChevronDown, { size: 16 }) : _jsx(ChevronRight, { size: 16 }), _jsx(SourceChip, { owner: g.owner }), _jsxs("div", { className: "min-w-0", children: [_jsx("div", { className: "font-medium truncate", children: sourceLabel(g.owner) }), _jsxs("div", { className: "text-xs text-muted-foreground", children: [g.items.length, " metric", g.items.length === 1 ? '' : 's', " \u00B7 ", g.pointsSum.toLocaleString(), " points"] })] })] }) }), isOpen ? (_jsx("div", { className: "overflow-x-auto border-t", children: _jsxs("table", { className: "w-full text-sm", children: [_jsx("thead", { children: _jsxs("tr", { className: "border-b text-left text-muted-foreground", children: [_jsx("th", { className: "py-3 pr-4 pl-4 font-medium", children: "Source" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Metric Key" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Label" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Unit" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Rollup" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Granularity" }), _jsx("th", { className: "py-3 pr-4 font-medium text-right", children: "Points" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "First" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Last" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Updated" })] }) }), _jsx("tbody", { children: g.items.map((d) => (_jsxs("tr", { className: "border-b hover:bg-muted/50 transition-colors", children: [_jsx("td", { className: "py-3 pr-4 pl-4", children: _jsxs("div", { className: "flex items-center gap-2", children: [_jsx(SourceChip, { owner: d.owner }), _jsx("span", { className: "text-xs text-muted-foreground", children: sourceLabel(d.owner) })] }) }), _jsx("td", { className: "py-3 pr-4", children: _jsx("code", { className: "text-xs bg-muted px-1.5 py-0.5 rounded font-mono", children: d.key }) }), _jsx("td", { className: "py-3 pr-4 font-medium", children: d.label }), _jsx("td", { className: "py-3 pr-4", children: _jsx("span", { className: "inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300", children: d.unit }) }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.rollup_strategy || '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.time_kind === 'realtime' ? (_jsx("span", { className: "inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300", children: "realtime" })) : d.time_kind === 'none' ? (_jsx("span", { className: "inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300", children: "n/a" })) : d.default_granularity ? (_jsxs("span", { className: "inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300", children: [d.default_granularity, Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (_jsxs("span", { className: "ml-1 text-slate-500 dark:text-slate-400", children: ["(", d.allowed_granularities.join(','), ")"] })) : null] })) : ('—') }), _jsx("td", { className: "py-3 pr-4 text-right tabular-nums", children: d.pointsCount > 0 ? (_jsx("span", { className: "text-green-600 dark:text-green-400 font-medium", children: d.pointsCount.toLocaleString() })) : (_jsx("span", { className: "text-muted-foreground", children: "0" })) }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—' })] }, d.key))) })] }) })) : null] }, g.key));
+                            }) })) : (_jsx("div", { className: "overflow-x-auto", children: _jsxs("table", { className: "w-full text-sm", children: [_jsx("thead", { children: _jsxs("tr", { className: "border-b text-left text-muted-foreground", children: [_jsx("th", { className: "py-3 pr-4 font-medium", children: "Source" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Metric Key" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Label" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Unit" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Rollup" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Granularity" }), _jsx("th", { className: "py-3 pr-4 font-medium text-right", children: "Points" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "First" }), _jsx("th", { className: "py-3 pr-4 font-medium", children: "Last" }), _jsx("th", { className: "py-3 font-medium", children: "Updated" })] }) }), _jsx("tbody", { children: filteredItems
+                                            .slice()
+                                            .sort((a, b) => a.key.localeCompare(b.key))
+                                            .map((d) => (_jsxs("tr", { className: "border-b hover:bg-muted/50 transition-colors", children: [_jsx("td", { className: "py-3 pr-4", children: _jsxs("div", { className: "flex items-center gap-2", children: [_jsx(SourceChip, { owner: d.owner }), _jsx("span", { className: "text-xs text-muted-foreground", children: sourceLabel(d.owner) })] }) }), _jsx("td", { className: "py-3 pr-4", children: _jsx("code", { className: "text-xs bg-muted px-1.5 py-0.5 rounded font-mono", children: d.key }) }), _jsx("td", { className: "py-3 pr-4 font-medium", children: d.label }), _jsx("td", { className: "py-3 pr-4", children: _jsx("span", { className: "inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300", children: d.unit }) }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.rollup_strategy || '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground", children: d.time_kind === 'realtime' ? (_jsx("span", { className: "inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300", children: "realtime" })) : d.time_kind === 'none' ? (_jsx("span", { className: "inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300", children: "n/a" })) : d.default_granularity ? (_jsxs("span", { className: "inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300", children: [d.default_granularity, Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (_jsxs("span", { className: "ml-1 text-slate-500 dark:text-slate-400", children: ["(", d.allowed_granularities.join(','), ")"] })) : null] })) : ('—') }), _jsx("td", { className: "py-3 pr-4 text-right tabular-nums", children: d.pointsCount > 0 ? (_jsx("span", { className: "text-green-600 dark:text-green-400 font-medium", children: d.pointsCount.toLocaleString() })) : (_jsx("span", { className: "text-muted-foreground", children: "0" })) }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—' }), _jsx("td", { className: "py-3 pr-4 text-muted-foreground tabular-nums", children: d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—' }), _jsx("td", { className: "py-3 text-muted-foreground tabular-nums", children: d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—' })] }, d.key))) })] }) }))] })) })] }));
 }
 export default Definitions;

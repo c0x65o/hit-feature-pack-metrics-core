@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Button, Card } from '@hit/ui-kit';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 type MetricCatalogItem = {
   key: string;
@@ -47,12 +48,28 @@ function SourceChip(props: { owner?: MetricCatalogItem['owner'] }) {
   return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>{text}</span>;
 }
 
+function sourceKey(owner?: MetricCatalogItem['owner']): string {
+  if (owner?.kind === 'feature_pack') return `fp:${owner.id}`;
+  if (owner?.kind === 'app') return 'app';
+  if (owner?.kind === 'user') return 'user';
+  return '—';
+}
+
+function sourceLabel(owner?: MetricCatalogItem['owner']): string {
+  if (owner?.kind === 'feature_pack') return `Feature pack: ${owner.id}`;
+  if (owner?.kind === 'app') return 'App';
+  if (owner?.kind === 'user') return `User: ${owner.id}`;
+  return '—';
+}
+
 export function Definitions() {
   const [items, setItems] = React.useState<MetricCatalogItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
   const [selectedSources, setSelectedSources] = React.useState<Set<string>>(new Set());
+  const [groupedView, setGroupedView] = React.useState(true);
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(new Set());
 
   async function refresh() {
     try {
@@ -81,13 +98,7 @@ export function Definitions() {
     if (items.length > 0 && selectedSources.size === 0) {
       const allSources = new Set<string>();
       for (const item of items) {
-        const source = item.owner?.kind === 'feature_pack'
-          ? `fp:${item.owner.id}`
-          : item.owner?.kind === 'app'
-            ? 'app'
-            : item.owner?.kind === 'user'
-              ? 'user'
-              : '—';
+        const source = sourceKey(item.owner);
         allSources.add(source);
       }
       setSelectedSources(allSources);
@@ -98,13 +109,7 @@ export function Definitions() {
   const availableSources = React.useMemo(() => {
     const sources = new Set<string>();
     for (const item of items) {
-      const source = item.owner?.kind === 'feature_pack'
-        ? `fp:${item.owner.id}`
-        : item.owner?.kind === 'app'
-          ? 'app'
-          : item.owner?.kind === 'user'
-            ? 'user'
-            : '—';
+      const source = sourceKey(item.owner);
       sources.add(source);
     }
     return Array.from(sources).sort();
@@ -114,13 +119,7 @@ export function Definitions() {
   const filteredItems = React.useMemo(() => {
     if (selectedSources.size === 0) return items;
     return items.filter((item) => {
-      const source = item.owner?.kind === 'feature_pack'
-        ? `fp:${item.owner.id}`
-        : item.owner?.kind === 'app'
-          ? 'app'
-          : item.owner?.kind === 'user'
-            ? 'user'
-            : '—';
+      const source = sourceKey(item.owner);
       return selectedSources.has(source);
     });
   }, [items, selectedSources]);
@@ -133,6 +132,35 @@ export function Definitions() {
       } else {
         next.add(source);
       }
+      return next;
+    });
+  }
+
+  const groupedItems = React.useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; owner?: MetricCatalogItem['owner']; items: MetricCatalogItem[]; pointsSum: number }
+    >();
+    for (const it of filteredItems) {
+      const k = sourceKey(it.owner);
+      const g = groups.get(k) || { key: k, owner: it.owner, items: [], pointsSum: 0 };
+      // Prefer first non-empty owner metadata
+      if (!g.owner && it.owner) g.owner = it.owner;
+      g.items.push(it);
+      g.pointsSum += Number(it.pointsCount || 0) || 0;
+      groups.set(k, g);
+    }
+
+    const out = Array.from(groups.values()).sort((a, b) => a.key.localeCompare(b.key));
+    for (const g of out) g.items.sort((a, b) => a.key.localeCompare(b.key));
+    return out;
+  }, [filteredItems]);
+
+  function toggleGroup(k: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
       return next;
     });
   }
@@ -215,93 +243,211 @@ export function Definitions() {
             {items.length === 0 ? 'No definitions yet.' : 'No metrics match the selected filters.'}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-3 pr-4 font-medium">Source</th>
-                  <th className="py-3 pr-4 font-medium">Metric Key</th>
-                  <th className="py-3 pr-4 font-medium">Label</th>
-                  <th className="py-3 pr-4 font-medium">Unit</th>
-                  <th className="py-3 pr-4 font-medium">Owner</th>
-                  <th className="py-3 pr-4 font-medium">Rollup</th>
-                  <th className="py-3 pr-4 font-medium">Granularity</th>
-                  <th className="py-3 pr-4 font-medium text-right">Points</th>
-                  <th className="py-3 pr-4 font-medium">First</th>
-                  <th className="py-3 pr-4 font-medium">Last</th>
-                  <th className="py-3 font-medium">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems
-                  .slice()
-                  .sort((a, b) => a.key.localeCompare(b.key))
-                  .map((d) => (
-                    <tr key={d.key} className="border-b hover:bg-muted/50 transition-colors">
-                      <td className="py-3 pr-4">
-                        <SourceChip owner={d.owner} />
-                      </td>
-                      <td className="py-3 pr-4">
-                        <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{d.key}</code>
-                      </td>
-                      <td className="py-3 pr-4 font-medium">{d.label}</td>
-                      <td className="py-3 pr-4">
-                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                          {d.unit}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {d.owner ? (
-                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
-                            {d.owner.kind}:{d.owner.id}
-                          </code>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground">{d.rollup_strategy || '—'}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">
-                        {d.time_kind === 'realtime' ? (
-                          <span className="inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300">
-                            realtime
-                          </span>
-                        ) : d.time_kind === 'none' ? (
-                          <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
-                            n/a
-                          </span>
-                        ) : d.default_granularity ? (
-                          <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
-                            {d.default_granularity}
-                            {Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (
-                              <span className="ml-1 text-slate-500 dark:text-slate-400">
-                                ({d.allowed_granularities.join(',')})
-                              </span>
-                            ) : null}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="py-3 pr-4 text-right tabular-nums">
-                        {d.pointsCount > 0 ? (
-                          <span className="text-green-600 dark:text-green-400 font-medium">{d.pointsCount.toLocaleString()}</span>
-                        ) : (
-                          <span className="text-muted-foreground">0</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                        {d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                        {d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
-                      </td>
-                      <td className="py-3 text-muted-foreground tabular-nums">
-                        {d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
-                      </td>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-muted-foreground">
+                Tip: this view is now grouped by source/owner to reduce noise.
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant={groupedView ? 'primary' : 'secondary'} onClick={() => setGroupedView(true)}>
+                  Grouped
+                </Button>
+                <Button variant={!groupedView ? 'primary' : 'secondary'} onClick={() => setGroupedView(false)}>
+                  Flat
+                </Button>
+              </div>
+            </div>
+
+            {groupedView ? (
+              <div className="space-y-3">
+                {groupedItems.map((g) => {
+                  const isOpen = expandedGroups.has(g.key);
+                  return (
+                    <div key={g.key} className="border rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(g.key)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          <SourceChip owner={g.owner} />
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{sourceLabel(g.owner)}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {g.items.length} metric{g.items.length === 1 ? '' : 's'} · {g.pointsSum.toLocaleString()} points
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+
+                      {isOpen ? (
+                        <div className="overflow-x-auto border-t">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-muted-foreground">
+                                <th className="py-3 pr-4 pl-4 font-medium">Source</th>
+                                <th className="py-3 pr-4 font-medium">Metric Key</th>
+                                <th className="py-3 pr-4 font-medium">Label</th>
+                                <th className="py-3 pr-4 font-medium">Unit</th>
+                                <th className="py-3 pr-4 font-medium">Rollup</th>
+                                <th className="py-3 pr-4 font-medium">Granularity</th>
+                                <th className="py-3 pr-4 font-medium text-right">Points</th>
+                                <th className="py-3 pr-4 font-medium">First</th>
+                                <th className="py-3 pr-4 font-medium">Last</th>
+                                <th className="py-3 pr-4 font-medium">Updated</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {g.items.map((d) => (
+                                <tr key={d.key} className="border-b hover:bg-muted/50 transition-colors">
+                                  <td className="py-3 pr-4 pl-4">
+                                    <div className="flex items-center gap-2">
+                                      <SourceChip owner={d.owner} />
+                                      <span className="text-xs text-muted-foreground">{sourceLabel(d.owner)}</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 pr-4">
+                                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{d.key}</code>
+                                  </td>
+                                  <td className="py-3 pr-4 font-medium">{d.label}</td>
+                                  <td className="py-3 pr-4">
+                                    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                      {d.unit}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 pr-4 text-muted-foreground">{d.rollup_strategy || '—'}</td>
+                                  <td className="py-3 pr-4 text-muted-foreground">
+                                    {d.time_kind === 'realtime' ? (
+                                      <span className="inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300">
+                                        realtime
+                                      </span>
+                                    ) : d.time_kind === 'none' ? (
+                                      <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+                                        n/a
+                                      </span>
+                                    ) : d.default_granularity ? (
+                                      <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+                                        {d.default_granularity}
+                                        {Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (
+                                          <span className="ml-1 text-slate-500 dark:text-slate-400">
+                                            ({d.allowed_granularities.join(',')})
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
+                                  <td className="py-3 pr-4 text-right tabular-nums">
+                                    {d.pointsCount > 0 ? (
+                                      <span className="text-green-600 dark:text-green-400 font-medium">{d.pointsCount.toLocaleString()}</span>
+                                    ) : (
+                                      <span className="text-muted-foreground">0</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                                    {d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
+                                  </td>
+                                  <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                                    {d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
+                                  </td>
+                                  <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                                    {d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="py-3 pr-4 font-medium">Source</th>
+                      <th className="py-3 pr-4 font-medium">Metric Key</th>
+                      <th className="py-3 pr-4 font-medium">Label</th>
+                      <th className="py-3 pr-4 font-medium">Unit</th>
+                      <th className="py-3 pr-4 font-medium">Rollup</th>
+                      <th className="py-3 pr-4 font-medium">Granularity</th>
+                      <th className="py-3 pr-4 font-medium text-right">Points</th>
+                      <th className="py-3 pr-4 font-medium">First</th>
+                      <th className="py-3 pr-4 font-medium">Last</th>
+                      <th className="py-3 font-medium">Updated</th>
                     </tr>
-                  ))}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {filteredItems
+                      .slice()
+                      .sort((a, b) => a.key.localeCompare(b.key))
+                      .map((d) => (
+                        <tr key={d.key} className="border-b hover:bg-muted/50 transition-colors">
+                          <td className="py-3 pr-4">
+                            <div className="flex items-center gap-2">
+                              <SourceChip owner={d.owner} />
+                              <span className="text-xs text-muted-foreground">{sourceLabel(d.owner)}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4">
+                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">{d.key}</code>
+                          </td>
+                          <td className="py-3 pr-4 font-medium">{d.label}</td>
+                          <td className="py-3 pr-4">
+                            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              {d.unit}
+                            </span>
+                          </td>
+                          <td className="py-3 pr-4 text-muted-foreground">{d.rollup_strategy || '—'}</td>
+                          <td className="py-3 pr-4 text-muted-foreground">
+                            {d.time_kind === 'realtime' ? (
+                              <span className="inline-flex items-center rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-medium text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-300">
+                                realtime
+                              </span>
+                            ) : d.time_kind === 'none' ? (
+                              <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+                                n/a
+                              </span>
+                            ) : d.default_granularity ? (
+                              <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+                                {d.default_granularity}
+                                {Array.isArray(d.allowed_granularities) && d.allowed_granularities.length > 0 ? (
+                                  <span className="ml-1 text-slate-500 dark:text-slate-400">
+                                    ({d.allowed_granularities.join(',')})
+                                  </span>
+                                ) : null}
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="py-3 pr-4 text-right tabular-nums">
+                            {d.pointsCount > 0 ? (
+                              <span className="text-green-600 dark:text-green-400 font-medium">{d.pointsCount.toLocaleString()}</span>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </td>
+                          <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                            {d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="py-3 pr-4 text-muted-foreground tabular-nums">
+                            {d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="py-3 text-muted-foreground tabular-nums">
+                            {d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </Card>
