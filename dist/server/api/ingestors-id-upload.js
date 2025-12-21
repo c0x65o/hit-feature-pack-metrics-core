@@ -3,11 +3,10 @@ import { getDb } from '@/lib/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { computeDimensionsHash } from '../lib/dimensions';
 import { getAuthContext } from '../lib/authz';
-import { formEntries, metricsDataSources, metricsIngestBatches, metricsLinks, metricsMetricPoints, projects } from '@/lib/feature-pack-schemas';
+import { metricsDataSources, metricsIngestBatches, metricsLinks, metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as yaml from 'js-yaml';
-import crypto from 'node:crypto';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const METRIC_POINT_UPSERT_CHUNK_SIZE = 400;
@@ -347,116 +346,8 @@ function inferSteamAppIdFromParsed(parsed) {
 function cryptoRandomId() {
     return `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
-function isUuidLike(input) {
-    const s = input.trim();
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
-}
-function deterministicProjectUuidFromLegacyId(oldId) {
-    const hex = crypto.createHash('md5').update(`${oldId}projects`).digest('hex');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-}
-async function inferSteamAppIdFromStorefrontsByProject(args) {
-    const { db, projectId } = args;
-    const STORE_FRONTS_FORM_ID = 'form_storefronts';
-    // Find storefront entries with platform=steam, and match their embedded project reference to this projectId.
-    const rows = await db
-        .select({
-        data: formEntries.data,
-    })
-        .from(formEntries)
-        .where(and(eq(formEntries.formId, STORE_FRONTS_FORM_ID), sql `(${formEntries.data}->>'platform') = 'steam'`))
-        .limit(200);
-    const appIds = new Set();
-    for (const r of rows) {
-        const data = (r?.data || {});
-        const isActive = data.is_active === undefined ? true : Boolean(data.is_active);
-        if (!isActive)
-            continue;
-        const proj = data.project;
-        const rawProjectId = proj && typeof proj === 'object' && typeof proj.entityId === 'string' ? String(proj.entityId) : '';
-        if (!rawProjectId)
-            continue;
-        const normalized = isUuidLike(rawProjectId) ? rawProjectId : deterministicProjectUuidFromLegacyId(rawProjectId);
-        if (normalized !== projectId)
-            continue;
-        const storeId = typeof data.store_id === 'string' ? data.store_id.trim() : '';
-        if (storeId)
-            appIds.add(storeId);
-    }
-    if (appIds.size === 1)
-        return Array.from(appIds)[0];
-    return null;
-}
-async function tryUpsertSteamAppLinkFromStorefronts(args) {
-    const { db, steamAppId, now } = args;
-    const STORE_FRONTS_FORM_ID = 'form_storefronts';
-    // Find a storefront entry with platform=steam and store_id=<steam_app_id>
-    // Data shape (from forms seed): { project: { entityKind, entityId, label }, platform, store_id, is_active, ... }
-    const rows = await db
-        .select({
-        id: formEntries.id,
-        data: formEntries.data,
-    })
-        .from(formEntries)
-        .where(and(eq(formEntries.formId, STORE_FRONTS_FORM_ID), sql `(${formEntries.data}->>'platform') = 'steam'`, sql `(${formEntries.data}->>'store_id') = ${steamAppId}`))
-        .limit(25);
-    for (const r of rows) {
-        const data = (r?.data || {});
-        const isActive = data.is_active === undefined ? true : Boolean(data.is_active);
-        if (!isActive)
-            continue;
-        const proj = data.project;
-        const rawProjectId = proj && typeof proj === 'object' && typeof proj.entityId === 'string' ? String(proj.entityId) : null;
-        if (!rawProjectId)
-            continue;
-        // Seeded form entries sometimes contain legacy marketing IDs like "proj_3e0b9c27".
-        // Normalize to the Projects feature pack UUIDs (matches the deterministic UUID logic in 020_projects_feature_pack.sql).
-        const projectId = isUuidLike(rawProjectId) ? rawProjectId : deterministicProjectUuidFromLegacyId(rawProjectId);
-        const projectRows = await db
-            .select({ id: projects.id, slug: projects.slug })
-            .from(projects)
-            .where(eq(projects.id, projectId))
-            .limit(1);
-        const projectSlug = projectRows[0]?.slug ? String(projectRows[0].slug) : null;
-        const metadata = {
-            source: 'forms',
-            form_id: STORE_FRONTS_FORM_ID,
-            entry_id: r.id,
-            legacy_project_id: isUuidLike(rawProjectId) ? null : rawProjectId,
-            project_slug: projectSlug,
-            game_id: typeof data.game_id === 'string' ? data.game_id : null,
-            store_url: typeof data.store_url === 'string' ? data.store_url : null,
-            platform: 'steam',
-            type: 'game',
-        };
-        await db
-            .insert(metricsLinks)
-            .values({
-            id: `mlink_${cryptoRandomId()}`,
-            linkType: 'steam.app',
-            linkId: steamAppId,
-            targetKind: 'project',
-            targetId: projectId,
-            metadata,
-            createdAt: now,
-            updatedAt: now,
-        })
-            .onConflictDoUpdate({
-            target: [
-                metricsLinks.linkType,
-                metricsLinks.linkId,
-                metricsLinks.targetKind,
-                metricsLinks.targetId,
-            ],
-            set: {
-                metadata: sql `excluded.metadata`,
-                updatedAt: now,
-            },
-        });
-        return { projectId, projectSlug, metadata };
-    }
-    return null;
-}
+// NOTE: This API must remain generic. App-specific link enrichment (e.g. resolving external IDs
+// into form entries) should be performed by the application layer, not here.
 export async function POST(request, ctx) {
     const auth = getAuthContext(request);
     if (!auth)
@@ -500,36 +391,20 @@ export async function POST(request, ctx) {
         mappingLookupKey = fileName.replace(/\.csv$/i, '').replace(/ - sales data$/i, '').trim().toLowerCase();
     }
     const linkRow = await db
-        .select({ metadata: metricsLinks.metadata })
+        .select({ metadata: metricsLinks.metadata, targetKind: metricsLinks.targetKind, targetId: metricsLinks.targetId })
         .from(metricsLinks)
         .where(and(eq(metricsLinks.linkType, linkType), eq(metricsLinks.linkId, mappingLookupKey)))
+        .orderBy(sql `CASE WHEN ${metricsLinks.targetKind} = 'none' THEN 1 ELSE 0 END`, sql `${metricsLinks.updatedAt} DESC`)
         .limit(1);
     const mappedMeta = (linkRow[0]?.metadata || {});
-    const mappedProjectSlug = typeof mappedMeta?.project_slug === 'string'
-        ? mappedMeta.project_slug.trim()
-        : typeof mappedMeta?.projectSlug === 'string'
-            ? mappedMeta.projectSlug.trim()
-            : '';
+    const mappedTargetKind = typeof linkRow[0]?.targetKind === 'string' ? String(linkRow[0].targetKind).trim() : '';
+    const mappedTargetId = typeof linkRow[0]?.targetId === 'string' ? String(linkRow[0].targetId).trim() : '';
     // Parse and aggregate (we use this both for inference and for ingestion).
     let parsed;
-    // Resolve file -> project (by slug). This is the canonical linkage for file-based ingestion.
-    // We intentionally avoid using steam_app_id for linkage; it can still exist as a dimension.
-    let linkedProjectId = null;
-    let linkedProjectSlug = null;
-    if (mappedProjectSlug) {
-        const proj = await db
-            .select({ id: projects.id, slug: projects.slug })
-            .from(projects)
-            .where(eq(projects.slug, mappedProjectSlug))
-            .limit(1);
-        if (!proj[0]?.id) {
-            return jsonError(`Unknown project slug in mapping for "${fileName}": "${mappedProjectSlug}"`, 400);
-        }
-        linkedProjectId = String(proj[0].id);
-        linkedProjectSlug = String(proj[0].slug || mappedProjectSlug);
-    }
-    else {
-        return jsonError(`Missing project_slug mapping for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", metadata.project_slug="<project slug>".`, 400);
+    // Resolve file -> entity (canonical linkage for file-based ingestion).
+    // This uses metrics_links.target_kind/target_id so the application can map external IDs to any entity in the system.
+    if (!mappedTargetKind || mappedTargetKind === 'none' || !mappedTargetId) {
+        return jsonError(`Missing mapping target for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", target_kind="<entity kind>", target_id="<entity id>".`, 400);
     }
     // For Steam wishlist/playerdata ingestors, steam_app_id is required for:
     // - stable per-app data_source IDs (overlap policy isolation)
@@ -542,9 +417,7 @@ export async function POST(request, ctx) {
         : typeof mappedMeta?.steamAppId === 'string'
             ? mappedMeta.steamAppId.trim()
             : '';
-    const inferredSteamAppIdForDims = steamAppIdHint ||
-        (linkedProjectId ? await inferSteamAppIdFromStorefrontsByProject({ db, projectId: linkedProjectId }) : null) ||
-        '';
+    const inferredSteamAppIdForDims = steamAppIdHint || '';
     if (ingestorId === 'steam-sales') {
         try {
             parsed = parseSteamDailySales(content, '');
@@ -574,10 +447,8 @@ export async function POST(request, ctx) {
     }
     // Infer steam app id from parsed data for dimension/ID purposes
     const steamAppId = inferSteamAppIdFromParsed(parsed) || '';
-    // For metrics-core v1: prefer scoping the metrics points to the linked project.
-    // If no project link exists, fall back to the ingestor's static scope.
-    const entityKind = linkedProjectId ? 'project' : cfg.scope.entity_kind;
-    const entityId = linkedProjectId ? linkedProjectId : cfg.scope.entity_id;
+    const entityKind = mappedTargetKind;
+    const entityId = mappedTargetId;
     const minDate = parsed.minDate;
     const maxDate = parsed.maxDate;
     if (!minDate || !maxDate)
@@ -593,11 +464,9 @@ export async function POST(request, ctx) {
     const ds = cfg.data_source;
     const scope = cfg.scope;
     // IMPORTANT:
-    // For Steam file ingestors, we must NOT use a single global data_source.id for all apps.
-    // Otherwise overlap policy (exact date range) collides across different steam_app_id files.
-    const dsId = ingestorId === 'steam-sales' || ingestorId === 'steam-wishlist' || ingestorId === 'steam-playerdata'
-        ? `${ds.id}_${safeIdPart(entityKind, 16)}_${safeIdPart(entityId, 48)}_${safeIdPart(steamAppId, 24)}`
-        : ds.id;
+    // For file ingestors, we should not use a single global data_source.id for all entities,
+    // otherwise overlap policy collides across different entities/files.
+    const dsId = `${ds.id}_${safeIdPart(entityKind, 16)}_${safeIdPart(entityId, 48)}_${safeIdPart(steamAppId, 24)}`;
     await db
         .insert(metricsDataSources)
         .values({
@@ -745,8 +614,8 @@ export async function POST(request, ctx) {
         fileSize,
         resolved: {
             steamAppId: steamAppId,
-            projectId: linkedProjectId,
-            projectSlug: linkedProjectSlug,
+            targetKind: entityKind,
+            targetId: entityId,
         },
         dateRange: { start: minDate.toISOString().slice(0, 10), end: maxDate.toISOString().slice(0, 10) },
         pointsUpserted: values.length,
