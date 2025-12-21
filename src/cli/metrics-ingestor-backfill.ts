@@ -136,7 +136,13 @@ async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`Mapping validation failed (${res.status}): ${body}`);
+      // This usually indicates the app server isn't running (or its dev build is broken),
+      // because this CLI relies on the app's API endpoints.
+      throw new Error(
+        `Mapping validation failed (${res.status}) for ${url}\n` +
+          `Make sure the hit-dashboard web server is running and healthy, then re-run this task.\n` +
+          `Response body:\n${body}`,
+      );
     }
     const json = (await res.json().catch(() => null)) as any;
     const rows = Array.isArray(json?.data) ? (json.data as Array<{ linkId?: string }>) : [];
