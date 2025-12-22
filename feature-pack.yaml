@@ -32,6 +32,9 @@ routes:
   - path: /metrics/mappings/[type]
     page: MappingsType
     roles: [admin]
+  - path: /metrics/segments
+    page: Segments
+    roles: [admin]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -74,6 +77,13 @@ nav:
         roles: [admin]
         weight: 140
         showWhen: authenticated
+      - id: metrics-core-segments
+        label: Segments
+        path: /metrics/segments
+        icon: Filter
+        roles: [admin]
+        weight: 150
+        showWhen: authenticated
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SCHEMA - Drizzle ORM table definitions
@@ -89,6 +99,7 @@ schema:
     - metricsLinks
     - metricsPartnerCredentials
     - metricsMetricPoints
+    - metricsSegments
     - MetricsMetricDefinition
     - InsertMetricsMetricDefinition
     - MetricsDataSource
@@ -105,6 +116,8 @@ schema:
     - InsertMetricsPartnerCredential
     - MetricsMetricPoint
     - InsertMetricsMetricPoint
+    - MetricsSegment
+    - InsertMetricsSegment
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API ROUTES - Backend endpoints
@@ -190,6 +203,26 @@ api:
       methods: [PUT, DELETE]
       handler: "@hit/feature-pack-metrics-core/server/api/links-id"
       description: "Update or delete a metrics link"
+
+    - path: /api/metrics/segments
+      methods: [GET, POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments"
+      description: "List/create segment definitions (classification layer over entities)"
+
+    - path: /api/metrics/segments/[key]
+      methods: [GET, PUT, DELETE]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments-key"
+      description: "Get/update/delete a segment by key"
+
+    - path: /api/metrics/segments/evaluate
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments-evaluate"
+      description: "Evaluate segment membership for a single entity (boolean)"
+
+    - path: /api/metrics/segments/query
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments-query"
+      description: "Query segment members (paged entityIds list)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES

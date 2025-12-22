@@ -242,6 +242,27 @@ export const metricsMetricPoints = pgTable(
   }),
 );
 
+/**
+ * Metrics Segments
+ * A reusable classification/selection layer over entities (projects, users, etc.).
+ *
+ * NOTE:
+ * - Segments are NOT metric points. They are rules that can be evaluated to:
+ *   - check membership (boolean)
+ *   - query matching entity ids (paged)
+ */
+export const metricsSegments = pgTable('metrics_segments', {
+  id: varchar('id', { length: 255 }).primaryKey(),
+  key: varchar('key', { length: 150 }).notNull().unique(), // e.g. "segment.project.revenue_gte_100k_all_time"
+  entityKind: varchar('entity_kind', { length: 50 }).notNull(), // project, user, company, etc.
+  label: varchar('label', { length: 255 }).notNull(),
+  description: text('description'),
+  rule: jsonb('rule').notNull(), // { kind: "...", ... } (resolver-specific)
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -269,3 +290,6 @@ export type InsertMetricsPartnerCredential = InferInsertModel<typeof metricsPart
 
 export type MetricsMetricPoint = InferSelectModel<typeof metricsMetricPoints>;
 export type InsertMetricsMetricPoint = InferInsertModel<typeof metricsMetricPoints>;
+
+export type MetricsSegment = InferSelectModel<typeof metricsSegments>;
+export type InsertMetricsSegment = InferInsertModel<typeof metricsSegments>;

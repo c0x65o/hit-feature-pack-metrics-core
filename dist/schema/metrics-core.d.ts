@@ -1487,6 +1487,130 @@ export declare const metricsMetricPoints: import("drizzle-orm/pg-core").PgTableW
     };
     dialect: "pg";
 }>;
+/**
+ * Metrics Segments
+ * A reusable classification/selection layer over entities (projects, users, etc.).
+ *
+ * NOTE:
+ * - Segments are NOT metric points. They are rules that can be evaluated to:
+ *   - check membership (boolean)
+ *   - query matching entity ids (paged)
+ */
+export declare const metricsSegments: import("drizzle-orm/pg-core").PgTableWithColumns<{
+    name: "metrics_segments";
+    schema: undefined;
+    columns: {
+        id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "id";
+            tableName: "metrics_segments";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        key: import("drizzle-orm/pg-core").PgColumn<{
+            name: "key";
+            tableName: "metrics_segments";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        entityKind: import("drizzle-orm/pg-core").PgColumn<{
+            name: "entity_kind";
+            tableName: "metrics_segments";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        label: import("drizzle-orm/pg-core").PgColumn<{
+            name: "label";
+            tableName: "metrics_segments";
+            dataType: "string";
+            columnType: "PgVarchar";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        description: import("drizzle-orm/pg-core").PgColumn<{
+            name: "description";
+            tableName: "metrics_segments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        rule: import("drizzle-orm/pg-core").PgColumn<{
+            name: "rule";
+            tableName: "metrics_segments";
+            dataType: "json";
+            columnType: "PgJsonb";
+            data: unknown;
+            driverParam: unknown;
+            notNull: true;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        isActive: import("drizzle-orm/pg-core").PgColumn<{
+            name: "is_active";
+            tableName: "metrics_segments";
+            dataType: "boolean";
+            columnType: "PgBoolean";
+            data: boolean;
+            driverParam: boolean;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        createdAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "created_at";
+            tableName: "metrics_segments";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        updatedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "updated_at";
+            tableName: "metrics_segments";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+    };
+    dialect: "pg";
+}>;
 export type MetricsMetricDefinition = InferSelectModel<typeof metricsMetricDefinitions>;
 export type InsertMetricsMetricDefinition = InferInsertModel<typeof metricsMetricDefinitions>;
 export type MetricsDataSource = InferSelectModel<typeof metricsDataSources>;
@@ -1503,4 +1627,6 @@ export type MetricsPartnerCredential = InferSelectModel<typeof metricsPartnerCre
 export type InsertMetricsPartnerCredential = InferInsertModel<typeof metricsPartnerCredentials>;
 export type MetricsMetricPoint = InferSelectModel<typeof metricsMetricPoints>;
 export type InsertMetricsMetricPoint = InferInsertModel<typeof metricsMetricPoints>;
+export type MetricsSegment = InferSelectModel<typeof metricsSegments>;
+export type InsertMetricsSegment = InferInsertModel<typeof metricsSegments>;
 //# sourceMappingURL=metrics-core.d.ts.map

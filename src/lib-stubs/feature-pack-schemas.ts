@@ -17,6 +17,7 @@ export {
   metricsLinks,
   metricsPartnerCredentials,
   metricsMetricPoints,
+  metricsSegments,
 } from '../schema/metrics-core';
 
 // Cross-pack tables that metrics-core may reference in some app integrations.
