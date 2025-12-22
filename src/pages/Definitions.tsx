@@ -340,20 +340,22 @@ export function Definitions() {
                                     )}
                                   </td>
                                   <td className="py-3 pr-4 text-right tabular-nums">
-                                    {d.pointsCount > 0 ? (
+                                    {d.time_kind === 'realtime' ? (
+                                      <span className="text-muted-foreground">—</span>
+                                    ) : d.pointsCount > 0 ? (
                                       <span className="text-green-600 dark:text-green-400 font-medium">{d.pointsCount.toLocaleString()}</span>
                                     ) : (
                                       <span className="text-muted-foreground">0</span>
                                     )}
                                   </td>
                                   <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                                    {d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
+                                    {d.time_kind === 'realtime' ? '—' : d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
                                   </td>
                                   <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                                    {d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
+                                    {d.time_kind === 'realtime' ? '—' : d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
                                   </td>
                                   <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                                    {d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                                    {d.time_kind === 'realtime' ? '—' : d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
                                   </td>
                                 </tr>
                               ))}
@@ -427,20 +429,22 @@ export function Definitions() {
                             )}
                           </td>
                           <td className="py-3 pr-4 text-right tabular-nums">
-                            {d.pointsCount > 0 ? (
+                            {d.time_kind === 'realtime' ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : d.pointsCount > 0 ? (
                               <span className="text-green-600 dark:text-green-400 font-medium">{d.pointsCount.toLocaleString()}</span>
                             ) : (
                               <span className="text-muted-foreground">0</span>
                             )}
                           </td>
                           <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                            {d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
+                            {d.time_kind === 'realtime' ? '—' : d.firstPointAt ? new Date(d.firstPointAt).toLocaleDateString() : '—'}
                           </td>
                           <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                            {d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
+                            {d.time_kind === 'realtime' ? '—' : d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
                           </td>
                           <td className="py-3 text-muted-foreground tabular-nums">
-                            {d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                            {d.time_kind === 'realtime' ? '—' : d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
                           </td>
                         </tr>
                       ))}

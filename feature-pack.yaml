@@ -161,6 +161,11 @@ api:
       handler: "@hit/feature-pack-metrics-core/server/api/query"
       description: "Query metric data with aggregation. Body: {metricKey, start, end, bucket: 'none'|'day'|'week'|'month', agg: 'sum'|'avg'|'max', entityId?, groupByEntityId?: true}. Use bucket='none' for totals, groupByEntityId=true to get per-entity breakdown."
 
+    - path: /api/metrics/query-batch
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/query-batch"
+      description: "Batch query metrics. Body: { queries: QueryBody[] }. Returns { results: Array<{data?, meta?, error?}> } in the same order as input."
+
     - path: /api/metrics/partners
       methods: [GET]
       handler: "@hit/feature-pack-metrics-core/server/api/partners"
