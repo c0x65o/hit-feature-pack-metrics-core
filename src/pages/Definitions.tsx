@@ -62,6 +62,31 @@ function sourceLabel(owner?: MetricCatalogItem['owner']): string {
   return '—';
 }
 
+function formatTimeAgo(dateString: string | null): string {
+  if (!dateString) return '—';
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '—';
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    if (diffSeconds < 60) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    
+    // For older dates, show the date
+    return date.toLocaleDateString();
+  } catch {
+    return '—';
+  }
+}
+
 export function Definitions() {
   const [items, setItems] = React.useState<MetricCatalogItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -355,7 +380,7 @@ export function Definitions() {
                                     {d.time_kind === 'realtime' ? '—' : d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
                                   </td>
                                   <td className="py-3 pr-4 text-muted-foreground tabular-nums">
-                                    {d.time_kind === 'realtime' ? '—' : d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                                    {d.time_kind === 'realtime' ? '—' : formatTimeAgo(d.lastUpdatedAt)}
                                   </td>
                                 </tr>
                               ))}
@@ -444,7 +469,7 @@ export function Definitions() {
                             {d.time_kind === 'realtime' ? '—' : d.lastPointAt ? new Date(d.lastPointAt).toLocaleDateString() : '—'}
                           </td>
                           <td className="py-3 text-muted-foreground tabular-nums">
-                            {d.time_kind === 'realtime' ? '—' : d.lastUpdatedAt ? new Date(d.lastUpdatedAt).toLocaleDateString() : '—'}
+                            {d.time_kind === 'realtime' ? '—' : formatTimeAgo(d.lastUpdatedAt)}
                           </td>
                         </tr>
                       ))}
