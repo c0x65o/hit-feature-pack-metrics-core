@@ -58,12 +58,21 @@ type EntityAttributeRule = {
   value: string | boolean;
 };
 
+type AllEntitiesRule = {
+  kind: 'all_entities';
+};
+
 type StaticIdsRule = {
   kind: 'static_entity_ids';
   entityIds: string[];
 };
 
-type SegmentRule = MetricThresholdRule | EntityAttributeRule | StaticIdsRule | { kind: string; [k: string]: unknown };
+type SegmentRule =
+  | MetricThresholdRule
+  | EntityAttributeRule
+  | AllEntitiesRule
+  | StaticIdsRule
+  | { kind: string; [k: string]: unknown };
 
 function windowRange(window: unknown): { start: Date | null; end: Date | null } {
   const w = typeof window === 'string' ? (window as WindowPreset) : null;
@@ -110,6 +119,19 @@ export async function POST(request: NextRequest) {
 
   const rule = (seg.rule && typeof seg.rule === 'object' ? seg.rule : null) as SegmentRule | null;
   if (!rule || typeof (rule as any).kind !== 'string') return jsonError('Segment rule is invalid', 500);
+
+  if (rule.kind === 'all_entities') {
+    if (entityKind !== 'user') return jsonError(`all_entities only supports entityKind=user (got ${entityKind})`, 400);
+    const totalRows = await authQuery<{ count: string }>('select count(*)::text as count from hit_auth_users', []);
+    const total = totalRows.length ? Number(totalRows[0].count || 0) : 0;
+    const offset = (page - 1) * pageSize;
+    const itemsRows = await authQuery<{ email: string }>(
+      `select email from hit_auth_users order by email asc limit ${pageSize} offset ${offset}`,
+      []
+    );
+    const items = itemsRows.map((r) => String((r as any).email || '').trim().toLowerCase()).filter(Boolean);
+    return NextResponse.json({ data: { items, total: Number.isFinite(total) ? total : 0, page, pageSize } });
+  }
 
   if (rule.kind === 'static_entity_ids') {
     const ids = Array.isArray((rule as any).entityIds)

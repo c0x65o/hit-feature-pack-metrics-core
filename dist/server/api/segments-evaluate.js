@@ -180,6 +180,15 @@ export async function POST(request) {
     const rule = (seg.rule && typeof seg.rule === 'object' ? seg.rule : null);
     if (!rule || typeof rule.kind !== 'string')
         return jsonError('Segment rule is invalid', 500);
+    if (rule.kind === 'all_entities') {
+        if (entityKind !== 'user')
+            return jsonError(`all_entities only supports entityKind=user (got ${entityKind})`, 400);
+        const email = String(entityId || '').trim().toLowerCase();
+        if (!email)
+            return NextResponse.json({ data: { matches: false } });
+        const rows = await authQuery('select 1 as ok from hit_auth_users where lower(email) = $1 limit 1', [email]);
+        return NextResponse.json({ data: { matches: rows.length > 0 } });
+    }
     if (rule.kind === 'static_entity_ids') {
         const ids = Array.isArray(rule.entityIds) ? rule.entityIds.map((x) => String(x || '').trim()).filter(Boolean) : [];
         return NextResponse.json({ data: { matches: ids.includes(entityId) } });

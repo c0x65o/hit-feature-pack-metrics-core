@@ -58,12 +58,21 @@ type EntityAttributeRule = {
   value: string | boolean;
 };
 
+type AllEntitiesRule = {
+  kind: 'all_entities';
+};
+
 type StaticIdsRule = {
   kind: 'static_entity_ids';
   entityIds: string[];
 };
 
-type SegmentRule = MetricThresholdRule | EntityAttributeRule | StaticIdsRule | { kind: string; [k: string]: unknown };
+type SegmentRule =
+  | MetricThresholdRule
+  | EntityAttributeRule
+  | AllEntitiesRule
+  | StaticIdsRule
+  | { kind: string; [k: string]: unknown };
 
 function windowRange(window: unknown): { start: Date | null; end: Date | null } {
   const w = typeof window === 'string' ? (window as WindowPreset) : null;
@@ -210,6 +219,17 @@ export async function POST(request: NextRequest) {
 
   const rule = (seg.rule && typeof seg.rule === 'object' ? seg.rule : null) as SegmentRule | null;
   if (!rule || typeof (rule as any).kind !== 'string') return jsonError('Segment rule is invalid', 500);
+
+  if (rule.kind === 'all_entities') {
+    if (entityKind !== 'user') return jsonError(`all_entities only supports entityKind=user (got ${entityKind})`, 400);
+    const email = String(entityId || '').trim().toLowerCase();
+    if (!email) return NextResponse.json({ data: { matches: false } });
+    const rows = await authQuery<{ ok: number }>(
+      'select 1 as ok from hit_auth_users where lower(email) = $1 limit 1',
+      [email]
+    );
+    return NextResponse.json({ data: { matches: rows.length > 0 } });
+  }
 
   if (rule.kind === 'static_entity_ids') {
     const ids = Array.isArray((rule as any).entityIds) ? (rule as any).entityIds.map((x: any) => String(x || '').trim()).filter(Boolean) : [];

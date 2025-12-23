@@ -86,6 +86,16 @@ export async function POST(request) {
     const rule = (seg.rule && typeof seg.rule === 'object' ? seg.rule : null);
     if (!rule || typeof rule.kind !== 'string')
         return jsonError('Segment rule is invalid', 500);
+    if (rule.kind === 'all_entities') {
+        if (entityKind !== 'user')
+            return jsonError(`all_entities only supports entityKind=user (got ${entityKind})`, 400);
+        const totalRows = await authQuery('select count(*)::text as count from hit_auth_users', []);
+        const total = totalRows.length ? Number(totalRows[0].count || 0) : 0;
+        const offset = (page - 1) * pageSize;
+        const itemsRows = await authQuery(`select email from hit_auth_users order by email asc limit ${pageSize} offset ${offset}`, []);
+        const items = itemsRows.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean);
+        return NextResponse.json({ data: { items, total: Number.isFinite(total) ? total : 0, page, pageSize } });
+    }
     if (rule.kind === 'static_entity_ids') {
         const ids = Array.isArray(rule.entityIds)
             ? rule.entityIds.map((x) => String(x || '').trim()).filter(Boolean)
