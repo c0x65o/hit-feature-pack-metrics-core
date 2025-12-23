@@ -43,7 +43,7 @@ nav:
   - id: metrics-core
     label: Metrics
     path: /metrics
-    icon: BarChart3
+    icon: ChartBar
     group: system
     roles: [admin]
     weight: 910
