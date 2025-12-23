@@ -1,4 +1,4 @@
 // @hit/feature-pack-metrics-core
 // A HIT feature pack
 export * from './pages';
-export * from './schema/metrics-core';
+// Schema exports MOVED to @hit/feature-pack-metrics-core/schema to avoid bundling drizzle-orm in client
