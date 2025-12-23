@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.37",
+  "version": "1.0.38",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -54,7 +54,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "js-yaml": "^4.1.1"
+    "js-yaml": "^4.1.1",
+    "pg": "^8.16.3"
   },
   "peerDependencies": {
     "@hit/ui-kit": "*",
@@ -70,6 +71,7 @@
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.0",
     "@types/js-yaml": "^4.0.9",
+    "@types/pg": "^8.15.6",
     "drizzle-orm": "^0.30.0",
     "lucide-react": "^0.460.0",
     "typescript": "^5.0.0",

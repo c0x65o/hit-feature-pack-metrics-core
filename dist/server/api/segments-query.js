@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
+import { authQuery } from '../lib/auth-db';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
@@ -35,6 +36,28 @@ function cmp(op, left, right) {
 function asNumber(x) {
     const n = typeof x === 'number' ? x : Number(x);
     return Number.isFinite(n) ? n : null;
+}
+function windowRange(window) {
+    const w = typeof window === 'string' ? window : null;
+    if (!w || w === 'all_time')
+        return { start: null, end: null };
+    const now = new Date();
+    const dayMs = 24 * 60 * 60 * 1000;
+    if (w === 'last_7_days')
+        return { start: new Date(now.getTime() - 7 * dayMs), end: now };
+    if (w === 'last_30_days')
+        return { start: new Date(now.getTime() - 30 * dayMs), end: now };
+    if (w === 'last_90_days')
+        return { start: new Date(now.getTime() - 90 * dayMs), end: now };
+    if (w === 'month_to_date') {
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+        return { start, end: now };
+    }
+    if (w === 'year_to_date') {
+        const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+        return { start, end: now };
+    }
+    return { start: null, end: null };
 }
 export async function POST(request) {
     const gate = requireAdminOrService(request);
@@ -88,6 +111,11 @@ export async function POST(request) {
             end = new Date(r.end);
             if (Number.isNaN(end.getTime()))
                 return jsonError('Invalid rule.end', 400);
+        }
+        if (!start && !end && r.window) {
+            const wr = windowRange(r.window);
+            start = wr.start;
+            end = wr.end;
         }
         if (start && end && end <= start)
             return jsonError('rule.end must be after rule.start', 400);
@@ -155,6 +183,41 @@ export async function POST(request) {
         const startIdx = (page - 1) * pageSize;
         const items = matched.slice(startIdx, startIdx + pageSize).map((row) => String(row.entityId));
         return NextResponse.json({ data: { items, total, page, pageSize } });
+    }
+    if (rule.kind === 'entity_attribute') {
+        if (entityKind !== 'user')
+            return jsonError(`entity_attribute only supports entityKind=user (got ${entityKind})`, 400);
+        const r = rule;
+        const attr = String(r.attribute || '').trim();
+        const op = r.op === '!=' ? '!=' : '==';
+        const v = r.value;
+        let whereSql = 'true';
+        const params = [];
+        if (attr === 'role') {
+            if (typeof v !== 'string' || !v.trim())
+                return jsonError('Invalid rule.value (role)', 400);
+            params.push(v.trim());
+            whereSql = op === '==' ? `role = $${params.length}` : `role <> $${params.length}`;
+        }
+        else if (attr === 'email_verified') {
+            const b = Boolean(v);
+            params.push(b);
+            whereSql = op === '==' ? `email_verified = $${params.length}` : `email_verified <> $${params.length}`;
+        }
+        else if (attr === 'locked') {
+            const b = Boolean(v);
+            params.push(b);
+            whereSql = op === '==' ? `locked = $${params.length}` : `locked <> $${params.length}`;
+        }
+        else {
+            return jsonError(`Unsupported attribute: ${attr}`, 400);
+        }
+        const totalRows = await authQuery(`select count(*)::text as count from hit_auth_users where ${whereSql}`, params);
+        const total = totalRows.length ? Number(totalRows[0].count || 0) : 0;
+        const offset = (page - 1) * pageSize;
+        const itemsRows = await authQuery(`select email from hit_auth_users where ${whereSql} order by email asc limit ${pageSize} offset ${offset}`, params);
+        const items = itemsRows.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean);
+        return NextResponse.json({ data: { items, total: Number.isFinite(total) ? total : 0, page, pageSize } });
     }
     return jsonError(`Unsupported rule kind: ${rule.kind}`, 400);
 }

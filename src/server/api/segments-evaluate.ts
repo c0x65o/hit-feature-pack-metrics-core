@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas';
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
+import { authQuery } from '../lib/auth-db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -22,6 +23,7 @@ function requireAdminOrService(request: NextRequest) {
 
 type MetricAgg = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
 type Op = '>=' | '>' | '<=' | '<' | '==' | '!=';
+type WindowPreset = 'all_time' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'month_to_date' | 'year_to_date';
 
 function cmp(op: Op, left: number, right: number): boolean {
   if (op === '>=') return left >= right;
@@ -43,8 +45,17 @@ type MetricThresholdRule = {
   agg?: MetricAgg;
   start?: string;
   end?: string;
+  window?: WindowPreset;
   op: Op;
   value: number;
+};
+
+type EntityAttributeOp = '==' | '!=';
+type EntityAttributeRule = {
+  kind: 'entity_attribute';
+  attribute: 'role' | 'email_verified' | 'locked';
+  op: EntityAttributeOp;
+  value: string | boolean;
 };
 
 type StaticIdsRule = {
@@ -52,7 +63,26 @@ type StaticIdsRule = {
   entityIds: string[];
 };
 
-type SegmentRule = MetricThresholdRule | StaticIdsRule | { kind: string; [k: string]: unknown };
+type SegmentRule = MetricThresholdRule | EntityAttributeRule | StaticIdsRule | { kind: string; [k: string]: unknown };
+
+function windowRange(window: unknown): { start: Date | null; end: Date | null } {
+  const w = typeof window === 'string' ? (window as WindowPreset) : null;
+  if (!w || w === 'all_time') return { start: null, end: null };
+  const now = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (w === 'last_7_days') return { start: new Date(now.getTime() - 7 * dayMs), end: now };
+  if (w === 'last_30_days') return { start: new Date(now.getTime() - 30 * dayMs), end: now };
+  if (w === 'last_90_days') return { start: new Date(now.getTime() - 90 * dayMs), end: now };
+  if (w === 'month_to_date') {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+    return { start, end: now };
+  }
+  if (w === 'year_to_date') {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+    return { start, end: now };
+  }
+  return { start: null, end: null };
+}
 
 async function evaluateMetricThreshold(args: {
   entityKind: string;
@@ -77,6 +107,11 @@ async function evaluateMetricThreshold(args: {
   if (rule.end) {
     end = new Date(rule.end);
     if (Number.isNaN(end.getTime())) return { ok: false as const, error: 'Invalid rule.end' };
+  }
+  if (!start && !end && rule.window) {
+    const wr = windowRange(rule.window);
+    start = wr.start;
+    end = wr.end;
   }
   if (start && end && end <= start) return { ok: false as const, error: 'rule.end must be after rule.start' };
 
@@ -123,6 +158,33 @@ async function evaluateMetricThreshold(args: {
   return { ok: true as const, matches: ok, value: v ?? 0 };
 }
 
+async function evaluateEntityAttribute(args: { entityKind: string; entityId: string; rule: EntityAttributeRule }) {
+  const { entityKind, entityId, rule } = args;
+  if (entityKind !== 'user') return { ok: false as const, error: `entity_attribute only supports entityKind=user (got ${entityKind})` };
+  const email = String(entityId || '').trim().toLowerCase();
+  if (!email) return { ok: false as const, error: 'Missing entityId' };
+
+  const rows = await authQuery<{ role: string; email_verified: boolean; locked: boolean }>(
+    'select role, email_verified, locked from hit_auth_users where email = $1 limit 1',
+    [email]
+  );
+  if (!rows.length) return { ok: true as const, matches: false, value: null };
+  const u = rows[0] as any;
+
+  const attr = String(rule.attribute || '').trim();
+  const op: EntityAttributeOp = rule.op === '!=' ? '!=' : '==';
+  const expected = rule.value;
+
+  let actual: any = null;
+  if (attr === 'role') actual = typeof u.role === 'string' ? u.role : String(u.role || '');
+  else if (attr === 'email_verified') actual = Boolean(u.email_verified);
+  else if (attr === 'locked') actual = Boolean(u.locked);
+  else return { ok: false as const, error: `Unsupported attribute: ${attr}` };
+
+  const matches = op === '==' ? actual === expected : actual !== expected;
+  return { ok: true as const, matches, value: actual };
+}
+
 export async function POST(request: NextRequest) {
   const gate = requireAdminOrService(request);
   if (!gate.ok) return gate.res;
@@ -156,6 +218,12 @@ export async function POST(request: NextRequest) {
 
   if (rule.kind === 'metric_threshold') {
     const out = await evaluateMetricThreshold({ entityKind, entityId, rule: rule as MetricThresholdRule });
+    if (!out.ok) return jsonError(out.error, 400);
+    return NextResponse.json({ data: { matches: out.matches, value: out.value } });
+  }
+
+  if (rule.kind === 'entity_attribute') {
+    const out = await evaluateEntityAttribute({ entityKind, entityId, rule: rule as EntityAttributeRule });
     if (!out.ok) return jsonError(out.error, 400);
     return NextResponse.json({ data: { matches: out.matches, value: out.value } });
   }
