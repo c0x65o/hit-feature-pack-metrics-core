@@ -20,6 +20,20 @@ function requireAdminOrService(request) {
         return { ok: false, res: jsonError('Forbidden', 403) };
     return { ok: true };
 }
+function allowSelfUserEvaluate(request, entityKind, entityId) {
+    const auth = getAuthContext(request);
+    if (!auth || auth.kind !== 'user')
+        return false;
+    if (entityKind !== 'user')
+        return false;
+    const target = String(entityId || '').trim().toLowerCase();
+    if (!target)
+        return false;
+    const me = String(auth.user.email || auth.user.sub || '').trim().toLowerCase();
+    if (!me)
+        return false;
+    return me === target;
+}
 function cmp(op, left, right) {
     if (op === '>=')
         return left >= right;
@@ -153,9 +167,6 @@ async function evaluateEntityAttribute(args) {
     return { ok: true, matches, value: actual };
 }
 export async function POST(request) {
-    const gate = requireAdminOrService(request);
-    if (!gate.ok)
-        return gate.res;
     const body = (await request.json().catch(() => null));
     if (!body)
         return jsonError('Invalid JSON body', 400);
@@ -168,6 +179,12 @@ export async function POST(request) {
         return jsonError('Missing entityKind', 400);
     if (!entityId)
         return jsonError('Missing entityId', 400);
+    const gate = requireAdminOrService(request);
+    if (!gate.ok) {
+        // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
+        if (!allowSelfUserEvaluate(request, entityKind, entityId))
+            return gate.res;
+    }
     const db = getDb();
     const segRows = await db.select().from(metricsSegments).where(eq(metricsSegments.key, segmentKey)).limit(1);
     if (!segRows.length)

@@ -21,6 +21,17 @@ function requireAdminOrService(request: NextRequest) {
   return { ok: true as const };
 }
 
+function allowSelfUserEvaluate(request: NextRequest, entityKind: string, entityId: string): boolean {
+  const auth = getAuthContext(request);
+  if (!auth || auth.kind !== 'user') return false;
+  if (entityKind !== 'user') return false;
+  const target = String(entityId || '').trim().toLowerCase();
+  if (!target) return false;
+  const me = String(auth.user.email || auth.user.sub || '').trim().toLowerCase();
+  if (!me) return false;
+  return me === target;
+}
+
 type MetricAgg = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
 type Op = '>=' | '>' | '<=' | '<' | '==' | '!=';
 type WindowPreset = 'all_time' | 'last_7_days' | 'last_30_days' | 'last_90_days' | 'month_to_date' | 'year_to_date';
@@ -195,9 +206,6 @@ async function evaluateEntityAttribute(args: { entityKind: string; entityId: str
 }
 
 export async function POST(request: NextRequest) {
-  const gate = requireAdminOrService(request);
-  if (!gate.ok) return gate.res;
-
   const body = (await request.json().catch(() => null)) as
     | { segmentKey?: unknown; entityKind?: unknown; entityId?: unknown }
     | null;
@@ -209,6 +217,12 @@ export async function POST(request: NextRequest) {
   if (!segmentKey) return jsonError('Missing segmentKey', 400);
   if (!entityKind) return jsonError('Missing entityKind', 400);
   if (!entityId) return jsonError('Missing entityId', 400);
+
+  const gate = requireAdminOrService(request);
+  if (!gate.ok) {
+    // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
+    if (!allowSelfUserEvaluate(request, entityKind, entityId)) return gate.res;
+  }
 
   const db = getDb();
   const segRows = await db.select().from(metricsSegments).where(eq(metricsSegments.key, segmentKey)).limit(1);
