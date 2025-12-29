@@ -105,6 +105,7 @@ export async function GET() {
             owner: cfg.owner,
             entity_kinds: cfg.entity_kinds,
             dimensions_schema: cfg.dimensions_schema,
+            ui: cfg.ui && typeof cfg.ui === 'object' ? cfg.ui : undefined,
             pointsCount: stat ? Number(stat.pointsCount || 0) : 0,
             firstPointAt: stat?.firstPointAt ? new Date(stat.firstPointAt).toISOString() : null,
             lastPointAt: stat?.lastPointAt ? new Date(stat.lastPointAt).toISOString() : null,

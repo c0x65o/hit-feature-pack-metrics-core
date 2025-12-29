@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.45",
+  "version": "1.0.46",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -62,6 +62,7 @@
     "react": "^18.0.0",
     "next": "^14.0.0",
     "@hit/sdk": "*",
+    "zod": ">=3.22.0",
     "lucide-react": ">=0.263.0",
     "drizzle-orm": ">=0.30.0"
   },
@@ -73,6 +74,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/pg": "^8.15.6",
     "drizzle-orm": "^0.30.0",
+    "zod": "^3.22.0",
     "lucide-react": "^0.460.0",
     "typescript": "^5.0.0",
     "next": "^14.2.5"

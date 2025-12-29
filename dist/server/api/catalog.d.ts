@@ -19,6 +19,13 @@ type MetricStatus = {
     };
     entity_kinds?: string[];
     dimensions_schema?: Record<string, any>;
+    /**
+     * Optional UI hints (app-defined).
+     * Example use-case: declare a computed metric column / bucket column for a specific tableId.
+     *
+     * This is intentionally untyped and pass-through: the catalog generator (and apps) own the schema.
+     */
+    ui?: Record<string, any>;
     pointsCount: number;
     firstPointAt: string | null;
     lastPointAt: string | null;

@@ -66,18 +66,6 @@ measures:
   # Measures reference metric keys in the metrics catalog.
   # The catalog remains the canonical schema/validation for metric definitions.
 
-  - id: revenue_gross_usd
-    label: Revenue (Gross USD)
-    kind: metric
-    metric_key: revenue_gross_usd
-    entity: project
-
-  - id: revenue_net_usd
-    label: Revenue (Net USD)
-    kind: metric
-    metric_key: revenue_usd
-    entity: project
-
   - id: project_count
     label: Project Count
     kind: metric
@@ -92,14 +80,6 @@ measures:
 
 
 derived_measures:
-  # Rollup example (relationship traversal + aggregation).
-  - id: company_revenue_gross_usd
-    label: Company Revenue (Gross USD)
-    kind: rollup_over_relationship
-    optional: true
-    entity: company
-    relationship: company_projects
-    measure: revenue_gross_usd
-    rollup: sum
+  # Rollup examples go here. Keep this file app-agnostic (no app-specific measures).
 
 

@@ -21,6 +21,13 @@ type MetricStatus = {
   owner?: { kind: 'feature_pack' | 'app' | 'user'; id: string };
   entity_kinds?: string[];
   dimensions_schema?: Record<string, any>;
+  /**
+   * Optional UI hints (app-defined).
+   * Example use-case: declare a computed metric column / bucket column for a specific tableId.
+   *
+   * This is intentionally untyped and pass-through: the catalog generator (and apps) own the schema.
+   */
+  ui?: Record<string, any>;
   pointsCount: number;
   firstPointAt: string | null;
   lastPointAt: string | null;
@@ -133,6 +140,7 @@ export async function GET() {
       owner: cfg.owner,
       entity_kinds: cfg.entity_kinds,
       dimensions_schema: cfg.dimensions_schema,
+      ui: cfg.ui && typeof cfg.ui === 'object' ? cfg.ui : undefined,
       pointsCount: stat ? Number(stat.pointsCount || 0) : 0,
       firstPointAt: stat?.firstPointAt ? new Date(stat.firstPointAt).toISOString() : null,
       lastPointAt: stat?.lastPointAt ? new Date(stat.lastPointAt).toISOString() : null,
