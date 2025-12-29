@@ -39,6 +39,15 @@ function asNumber(x: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function opSql(op: Op, left: any, right: any) {
+  if (op === '>=') return sql`${left} >= ${right}`;
+  if (op === '>') return sql`${left} > ${right}`;
+  if (op === '<=') return sql`${left} <= ${right}`;
+  if (op === '<') return sql`${left} < ${right}`;
+  if (op === '==') return sql`${left} = ${right}`;
+  return sql`${left} != ${right}`;
+}
+
 type MetricThresholdRule = {
   kind: 'metric_threshold';
   metricKey: string;
@@ -177,8 +186,6 @@ export async function POST(request: NextRequest) {
     const threshold = asNumber(r.value);
     if (!threshold && threshold !== 0) return jsonError('Invalid rule.value', 400);
 
-    // MVP approach: query aggregated value per entityId, then filter + paginate in memory.
-    // This is acceptable for small/medium datasets; later we can push HAVING + LIMIT/OFFSET into SQL.
     if (agg === 'last') {
       // last-per-entity: use row_number partitioned by entity_id
       const rnExpr = sql<number>`row_number() over (partition by ${metricsMetricPoints.entityId} order by ${metricsMetricPoints.date} desc)`.as('rn');
@@ -192,19 +199,29 @@ export async function POST(request: NextRequest) {
         .where(and(...whereParts))
         .as('mp');
 
-      const rows = await db
+      const latest = db
         .select({ entityId: (base as any).entityId, value: (base as any).value } as any)
         .from(base as any)
         .where(eq((base as any).rn, 1))
-        .orderBy(asc((base as any).entityId));
+        .as('latest');
 
-      const matched = rows.filter((row: any) => {
-        const v = asNumber(row.value) ?? 0;
-        return cmp(op, v, threshold);
-      });
-      const total = matched.length;
-      const startIdx = (page - 1) * pageSize;
-      const items = matched.slice(startIdx, startIdx + pageSize).map((row: any) => String(row.entityId));
+      const whereMatch = opSql(op, sql`${(latest as any).value}::float8`, threshold);
+
+      const countRows = await db
+        .select({ count: sql<number>`count(*)`.as('count') })
+        .from(latest as any)
+        .where(whereMatch);
+      const total = Number(countRows?.[0]?.count || 0) || 0;
+
+      const rows = await db
+        .select({ entityId: (latest as any).entityId } as any)
+        .from(latest as any)
+        .where(whereMatch)
+        .orderBy(asc((latest as any).entityId))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize);
+
+      const items = rows.map((row: any) => String(row.entityId));
       return NextResponse.json({ data: { items, total, page, pageSize } });
     }
 
@@ -219,20 +236,29 @@ export async function POST(request: NextRequest) {
               ? sql`max(${metricsMetricPoints.value})`
               : sql`count(*)`;
 
-    const rows = await db
-      .select({ entityId: metricsMetricPoints.entityId, value: aggExpr.as('value') as any } as any)
+    const having = opSql(op, sql`${aggExpr}::float8`, threshold);
+
+    const matched = db
+      .select({ entityId: metricsMetricPoints.entityId } as any)
       .from(metricsMetricPoints)
       .where(and(...whereParts))
       .groupBy(metricsMetricPoints.entityId)
-      .orderBy(asc(metricsMetricPoints.entityId));
+      .having(having)
+      .as('matched');
 
-    const matched = rows.filter((row: any) => {
-      const v = asNumber(row.value) ?? 0;
-      return cmp(op, v, threshold);
-    });
-    const total = matched.length;
-    const startIdx = (page - 1) * pageSize;
-    const items = matched.slice(startIdx, startIdx + pageSize).map((row: any) => String(row.entityId));
+    const countRows = await db
+      .select({ count: sql<number>`count(*)`.as('count') })
+      .from(matched as any);
+    const total = Number(countRows?.[0]?.count || 0) || 0;
+
+    const rows = await db
+      .select({ entityId: (matched as any).entityId } as any)
+      .from(matched as any)
+      .orderBy(asc((matched as any).entityId))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    const items = rows.map((row: any) => String(row.entityId));
     return NextResponse.json({ data: { items, total, page, pageSize } });
   }
 

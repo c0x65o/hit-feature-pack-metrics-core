@@ -37,6 +37,19 @@ function asNumber(x) {
     const n = typeof x === 'number' ? x : Number(x);
     return Number.isFinite(n) ? n : null;
 }
+function opSql(op, left, right) {
+    if (op === '>=')
+        return sql `${left} >= ${right}`;
+    if (op === '>')
+        return sql `${left} > ${right}`;
+    if (op === '<=')
+        return sql `${left} <= ${right}`;
+    if (op === '<')
+        return sql `${left} < ${right}`;
+    if (op === '==')
+        return sql `${left} = ${right}`;
+    return sql `${left} != ${right}`;
+}
 function windowRange(window) {
     const w = typeof window === 'string' ? window : null;
     if (!w || w === 'all_time')
@@ -142,8 +155,6 @@ export async function POST(request) {
         const threshold = asNumber(r.value);
         if (!threshold && threshold !== 0)
             return jsonError('Invalid rule.value', 400);
-        // MVP approach: query aggregated value per entityId, then filter + paginate in memory.
-        // This is acceptable for small/medium datasets; later we can push HAVING + LIMIT/OFFSET into SQL.
         if (agg === 'last') {
             // last-per-entity: use row_number partitioned by entity_id
             const rnExpr = sql `row_number() over (partition by ${metricsMetricPoints.entityId} order by ${metricsMetricPoints.date} desc)`.as('rn');
@@ -156,18 +167,25 @@ export async function POST(request) {
                 .from(metricsMetricPoints)
                 .where(and(...whereParts))
                 .as('mp');
-            const rows = await db
+            const latest = db
                 .select({ entityId: base.entityId, value: base.value })
                 .from(base)
                 .where(eq(base.rn, 1))
-                .orderBy(asc(base.entityId));
-            const matched = rows.filter((row) => {
-                const v = asNumber(row.value) ?? 0;
-                return cmp(op, v, threshold);
-            });
-            const total = matched.length;
-            const startIdx = (page - 1) * pageSize;
-            const items = matched.slice(startIdx, startIdx + pageSize).map((row) => String(row.entityId));
+                .as('latest');
+            const whereMatch = opSql(op, sql `${latest.value}::float8`, threshold);
+            const countRows = await db
+                .select({ count: sql `count(*)`.as('count') })
+                .from(latest)
+                .where(whereMatch);
+            const total = Number(countRows?.[0]?.count || 0) || 0;
+            const rows = await db
+                .select({ entityId: latest.entityId })
+                .from(latest)
+                .where(whereMatch)
+                .orderBy(asc(latest.entityId))
+                .limit(pageSize)
+                .offset((page - 1) * pageSize);
+            const items = rows.map((row) => String(row.entityId));
             return NextResponse.json({ data: { items, total, page, pageSize } });
         }
         const aggExpr = agg === 'sum'
@@ -179,19 +197,25 @@ export async function POST(request) {
                     : agg === 'max'
                         ? sql `max(${metricsMetricPoints.value})`
                         : sql `count(*)`;
-        const rows = await db
-            .select({ entityId: metricsMetricPoints.entityId, value: aggExpr.as('value') })
+        const having = opSql(op, sql `${aggExpr}::float8`, threshold);
+        const matched = db
+            .select({ entityId: metricsMetricPoints.entityId })
             .from(metricsMetricPoints)
             .where(and(...whereParts))
             .groupBy(metricsMetricPoints.entityId)
-            .orderBy(asc(metricsMetricPoints.entityId));
-        const matched = rows.filter((row) => {
-            const v = asNumber(row.value) ?? 0;
-            return cmp(op, v, threshold);
-        });
-        const total = matched.length;
-        const startIdx = (page - 1) * pageSize;
-        const items = matched.slice(startIdx, startIdx + pageSize).map((row) => String(row.entityId));
+            .having(having)
+            .as('matched');
+        const countRows = await db
+            .select({ count: sql `count(*)`.as('count') })
+            .from(matched);
+        const total = Number(countRows?.[0]?.count || 0) || 0;
+        const rows = await db
+            .select({ entityId: matched.entityId })
+            .from(matched)
+            .orderBy(asc(matched.entityId))
+            .limit(pageSize)
+            .offset((page - 1) * pageSize);
+        const items = rows.map((row) => String(row.entityId));
         return NextResponse.json({ data: { items, total, page, pageSize } });
     }
     if (rule.kind === 'entity_attribute') {
