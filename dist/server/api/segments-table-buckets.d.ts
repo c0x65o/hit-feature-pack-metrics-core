@@ -7,6 +7,8 @@ type BucketDef = {
     sortOrder: number;
     columnKey: string;
     columnLabel?: string;
+    entityKind?: string;
+    entityIdField?: string;
 };
 /**
  * GET /api/metrics/segments/table-buckets?tableId=projects&columnKey=revenue_bucket&entityKind=project
@@ -18,8 +20,26 @@ export declare function GET(request: NextRequest): Promise<NextResponse<{
 }> | NextResponse<{
     data: {
         tableId: string;
+        entityKind: string | null;
+        columns: {
+            columnKey: string;
+            columnLabel: string | null;
+            entityKind: string | null;
+            entityIdField: string;
+            buckets: Array<{
+                segmentKey: string;
+                bucketLabel: string;
+                sortOrder: number;
+            }>;
+        }[];
+    };
+}> | NextResponse<{
+    data: {
+        tableId: string;
         columnKey: string;
         columnLabel: string | null;
+        entityKind: string | null;
+        entityIdField: string;
         buckets: BucketDef[];
     };
 }>>;

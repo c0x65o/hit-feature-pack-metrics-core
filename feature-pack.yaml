@@ -240,6 +240,11 @@ api:
       handler: "@hit/feature-pack-metrics-core/server/api/segments-table-buckets"
       description: "Query bucket segment membership per bucket (counts + paged entityIds per bucket)"
 
+    - path: /api/metrics/segments/table-buckets/evaluate
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments-table-buckets-evaluate"
+      description: "Evaluate bucket column value for a set of entityIds (first-match wins)"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES
 # ─────────────────────────────────────────────────────────────────────────────

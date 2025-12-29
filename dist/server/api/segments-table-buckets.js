@@ -91,10 +91,58 @@ async function loadBucketSegments(args) {
             sortOrder,
             columnKey: ck,
             columnLabel: typeof table?.columnLabel === 'string' ? table.columnLabel.trim() : undefined,
+            entityKind: typeof r?.entityKind === 'string' ? String(r.entityKind) : undefined,
+            entityIdField: typeof table?.entityIdField === 'string' ? table.entityIdField.trim() : 'id',
         });
     }
     out.sort((a, b) => (a.sortOrder - b.sortOrder) || a.bucketLabel.localeCompare(b.bucketLabel) || a.segmentKey.localeCompare(b.segmentKey));
     return out;
+}
+async function loadBucketColumns(args) {
+    const { tableId, entityKind } = args;
+    const db = getDb();
+    const where = [
+        eq(metricsSegments.isActive, true),
+        sql `(${metricsSegments.rule} -> 'table' ->> 'tableId') = ${tableId}`,
+        sql `(${metricsSegments.rule} -> 'table' ->> 'columnKey') is not null`,
+    ];
+    if (entityKind)
+        where.push(eq(metricsSegments.entityKind, entityKind));
+    const rows = await db
+        .select()
+        .from(metricsSegments)
+        .where(and(...where))
+        .orderBy(asc(metricsSegments.key));
+    const byColumn = new Map();
+    for (const r of rows) {
+        const rule = (r?.rule && typeof r.rule === 'object' ? r.rule : null);
+        const table = rule?.table && typeof rule.table === 'object' ? rule.table : null;
+        const ck = typeof table?.columnKey === 'string' ? table.columnKey.trim() : '';
+        if (!ck)
+            continue;
+        const bucketLabel = typeof table?.bucketLabel === 'string' ? table.bucketLabel.trim() : '';
+        if (!bucketLabel)
+            continue;
+        const sortOrder = Number(table?.sortOrder ?? 0) || 0;
+        const columnLabel = typeof table?.columnLabel === 'string' ? table.columnLabel.trim() : null;
+        const ek = typeof r?.entityKind === 'string' ? String(r.entityKind) : null;
+        const entityIdField = typeof table?.entityIdField === 'string' ? table.entityIdField.trim() : 'id';
+        if (!byColumn.has(ck)) {
+            byColumn.set(ck, { columnKey: ck, columnLabel, entityKind: ek, entityIdField, buckets: [] });
+        }
+        const col = byColumn.get(ck);
+        if (!col.columnLabel && columnLabel)
+            col.columnLabel = columnLabel;
+        if (!col.entityKind && ek)
+            col.entityKind = ek;
+        // If multiple segments specify different entityIdField, keep the first.
+        col.buckets.push({ segmentKey: String(r.key || '').trim(), bucketLabel, sortOrder });
+    }
+    const columns = Array.from(byColumn.values()).map((c) => {
+        c.buckets.sort((a, b) => (a.sortOrder - b.sortOrder) || a.bucketLabel.localeCompare(b.bucketLabel) || a.segmentKey.localeCompare(b.segmentKey));
+        return c;
+    }).sort((a, b) => a.columnKey.localeCompare(b.columnKey));
+    return columns;
 }
 async function queryMembersForSegment(args) {
     const { segmentKey, entityKind, page, pageSize } = args;
@@ -280,11 +328,15 @@ export async function GET(request) {
     const entityKind = String(url.searchParams.get('entityKind') || '').trim();
     if (!tableId)
         return jsonError('Missing tableId', 400);
-    if (!columnKey)
-        return jsonError('Missing columnKey', 400);
+    if (!columnKey) {
+        const columns = await loadBucketColumns({ tableId, entityKind: entityKind || undefined });
+        return NextResponse.json({ data: { tableId, entityKind: entityKind || null, columns } });
+    }
     const buckets = await loadBucketSegments({ tableId, columnKey, entityKind: entityKind || undefined });
     const columnLabel = buckets.find((b) => b.columnLabel)?.columnLabel;
-    return NextResponse.json({ data: { tableId, columnKey, columnLabel: columnLabel || null, buckets } });
+    const entityIdField = buckets.find((b) => b.entityIdField)?.entityIdField || 'id';
+    const ek = buckets.find((b) => b.entityKind)?.entityKind || (entityKind || null);
+    return NextResponse.json({ data: { tableId, columnKey, columnLabel: columnLabel || null, entityKind: ek, entityIdField, buckets } });
 }
 /**
  * POST /api/metrics/segments/table-buckets/query
