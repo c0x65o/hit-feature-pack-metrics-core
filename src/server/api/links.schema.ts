@@ -8,5 +8,5 @@ export const postBodySchema = z.object({
   linkId: z.string().min(1),
   targetKind: z.string().optional().default("none"),
   targetId: z.string().optional(),
-  metadata: z.record(z.unknown()).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });

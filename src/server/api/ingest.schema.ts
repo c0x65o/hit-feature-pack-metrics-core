@@ -11,7 +11,7 @@ const ingestPointSchema = z.object({
   date: z.string(),
   granularity: z.string().optional(),
   value: z.union([z.number(), z.string()]),
-  dimensions: z.record(z.unknown()).nullable().optional(),
+  dimensions: z.record(z.string(), z.unknown()).nullable().optional(),
   syncRunId: z.string().nullable().optional(),
   ingestBatchId: z.string().nullable().optional(),
 });

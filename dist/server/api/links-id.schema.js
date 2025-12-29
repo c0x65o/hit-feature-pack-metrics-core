@@ -6,5 +6,5 @@ export const putBodySchema = z.object({
     linkId: z.string().min(1).optional(),
     targetKind: z.string().optional(),
     targetId: z.string().optional(),
-    metadata: z.record(z.unknown()).nullable().optional(),
+    metadata: z.record(z.string(), z.unknown()).nullable().optional(),
 });

@@ -5,5 +5,5 @@ import { z } from "zod";
 
 export const putBodySchema = z.object({
   enabled: z.boolean().optional(),
-  credentials: z.record(z.unknown()).optional(),
+  credentials: z.record(z.string(), z.unknown()).optional(),
 });
