@@ -35,6 +35,12 @@ routes:
   - path: /metrics/segments
     page: Segments
     roles: [admin]
+  - path: /metrics/segments/new
+    page: SegmentEdit
+    roles: [admin]
+  - path: /metrics/segments/[key]/edit
+    page: SegmentEdit
+    roles: [admin]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items

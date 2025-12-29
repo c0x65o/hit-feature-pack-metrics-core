@@ -13,48 +13,14 @@ type SegmentRow = {
   updatedAt: string;
 };
 
-function safeJsonParse(text: string): { ok: true; value: any } | { ok: false; error: string } {
-  try {
-    return { ok: true, value: JSON.parse(text) };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Invalid JSON' };
-  }
-}
-
 export function Segments(props: { onNavigate?: (path: string) => void }) {
-  const { Page, Card, Button, Input, TextArea, Table, Badge, Modal, Select } = useUi();
+  const { Page, Card, Button, Table, Badge } = useUi();
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<SegmentRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [entityKindFilter, setEntityKindFilter] = useState<string>('');
-
-  // Create/edit modal state
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [key, setKey] = useState('');
-  const [entityKind, setEntityKind] = useState('project');
-  const [label, setLabel] = useState('');
-  const [description, setDescription] = useState('');
-  const [ruleText, setRuleText] = useState(
-    JSON.stringify(
-      {
-        kind: 'metric_threshold',
-        metricKey: 'revenue_usd',
-        agg: 'sum',
-        op: '>=',
-        value: 100000,
-        // Optional:
-        // start: '2025-01-01T00:00:00.000Z',
-        // end: '2026-01-01T00:00:00.000Z',
-      },
-      null,
-      2
-    )
-  );
-  const [isActive, setIsActive] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   const navigate = (path: string) => {
     if (props.onNavigate) props.onNavigate(path);
@@ -90,81 +56,6 @@ export function Segments(props: { onNavigate?: (path: string) => void }) {
     return Array.from(s).filter(Boolean).sort();
   }, [rows]);
 
-  function openCreate() {
-    setEditingKey(null);
-    setKey('');
-    setEntityKind('project');
-    setLabel('');
-    setDescription('');
-    setIsActive(true);
-    setRuleText(
-      JSON.stringify(
-        { kind: 'metric_threshold', metricKey: 'revenue_usd', agg: 'sum', op: '>=', value: 100000 },
-        null,
-        2
-      )
-    );
-    setModalOpen(true);
-  }
-
-  function openEdit(row: SegmentRow) {
-    setEditingKey(row.key);
-    setKey(row.key);
-    setEntityKind(row.entityKind);
-    setLabel(row.label);
-    setDescription(row.description || '');
-    setIsActive(Boolean(row.isActive));
-    setRuleText(JSON.stringify(row.rule ?? { kind: 'metric_threshold' }, null, 2));
-    setModalOpen(true);
-  }
-
-  async function save() {
-    const parsed = safeJsonParse(ruleText);
-    if (!parsed.ok) {
-      setError(`Rule JSON error: ${parsed.error}`);
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      if (!editingKey) {
-        const res = await fetch('/api/metrics/segments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key,
-            entityKind,
-            label,
-            description: description.trim() ? description : null,
-            rule: parsed.value,
-            isActive,
-          }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || `Failed to create (${res.status})`);
-      } else {
-        const res = await fetch(`/api/metrics/segments/${encodeURIComponent(editingKey)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            label,
-            description: description.trim() ? description : null,
-            rule: parsed.value,
-            isActive,
-          }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || `Failed to update (${res.status})`);
-      }
-      setModalOpen(false);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function deleteRow(row: SegmentRow) {
     if (!confirm(`Delete segment "${row.key}"?`)) return;
     setLoading(true);
@@ -195,7 +86,7 @@ export function Segments(props: { onNavigate?: (path: string) => void }) {
           <Button variant="secondary" onClick={load} disabled={loading}>
             Refresh
           </Button>
-          <Button variant="primary" onClick={openCreate}>
+          <Button variant="primary" onClick={() => navigate('/metrics/segments/new')}>
             New Segment
           </Button>
         </div>
@@ -204,20 +95,62 @@ export function Segments(props: { onNavigate?: (path: string) => void }) {
       <Card>
         {error ? <div style={{ marginBottom: '12px', color: 'var(--hit-error, #ef4444)' }}>{error}</div> : null}
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'end', marginBottom: '12px', flexWrap: 'wrap' }}>
-          <Input label="Search" value={q} onChange={setQ} />
-          <Select
-            label="Entity kind"
-            value={entityKindFilter}
-            onChange={setEntityKindFilter}
-            options={[
-              { value: '', label: 'All' },
-              ...entityKinds.map((k) => ({ value: k, label: k })),
-            ]}
-          />
-          <Button variant="secondary" onClick={load} disabled={loading}>
-            Apply
-          </Button>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px', maxWidth: '300px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '6px', color: 'var(--hit-text-secondary, #64748b)' }}>
+              Search
+            </label>
+            <input
+              type="text"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search segments..."
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                border: '1px solid var(--hit-border, #e2e8f0)',
+                borderRadius: '6px',
+                backgroundColor: 'var(--hit-bg-input, #fff)',
+                color: 'var(--hit-text-primary, #1e293b)',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ flex: '0 0 auto', minWidth: '140px' }}>
+            <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '6px', color: 'var(--hit-text-secondary, #64748b)' }}>
+              Entity kind
+            </label>
+            <select
+              value={entityKindFilter}
+              onChange={(e) => setEntityKindFilter(e.target.value)}
+              style={{
+                width: '100%',
+                height: '36px',
+                padding: '0 12px',
+                fontSize: '14px',
+                border: '1px solid var(--hit-border, #e2e8f0)',
+                borderRadius: '6px',
+                backgroundColor: 'var(--hit-bg-input, #fff)',
+                color: 'var(--hit-text-primary, #1e293b)',
+                outline: 'none',
+                boxSizing: 'border-box',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">All</option>
+              {entityKinds.map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: '0 0 auto' }}>
+            <Button variant="secondary" onClick={load} disabled={loading}>
+              Apply
+            </Button>
+          </div>
         </div>
 
         <Table
@@ -257,7 +190,7 @@ export function Segments(props: { onNavigate?: (path: string) => void }) {
             ),
             actions: (
               <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <Button variant="secondary" size="sm" onClick={() => openEdit(r)}>
+                <Button variant="secondary" size="sm" onClick={() => navigate(`/metrics/segments/${encodeURIComponent(r.key)}/edit`)}>
                   Edit
                 </Button>
                 <Button variant="danger" size="sm" onClick={() => deleteRow(r)}>
@@ -268,60 +201,6 @@ export function Segments(props: { onNavigate?: (path: string) => void }) {
           }))}
         />
       </Card>
-
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editingKey ? 'Edit Segment' : 'New Segment'}
-        description="Segments are reusable selection rules. Store a stable key so other systems can reference it."
-        size="lg"
-      >
-        <div className="space-y-4">
-          <Input
-            label="Key"
-            value={key}
-            onChange={setKey}
-            placeholder="segment.project.revenue_gte_100k_all_time"
-            required
-            disabled={Boolean(editingKey)}
-          />
-          <Input label="Label" value={label} onChange={setLabel} placeholder="High Revenue Projects" required />
-          <Input label="Entity Kind" value={entityKind} onChange={setEntityKind} placeholder="project" required disabled={Boolean(editingKey)} />
-          <Input label="Description" value={description} onChange={setDescription} placeholder="Optional" />
-
-          <TextArea
-            label="Rule (JSON)"
-            value={ruleText}
-            onChange={setRuleText}
-            rows={12}
-            placeholder='{"kind":"metric_threshold","metricKey":"revenue_usd","agg":"sum","op":">=","value":100000}'
-          />
-
-          <Select
-            label="Status"
-            value={isActive ? 'active' : 'inactive'}
-            onChange={(v: string) => setIsActive(v === 'active')}
-            options={[
-              { value: 'active', label: 'Active' },
-              { value: 'inactive', label: 'Inactive' },
-            ]}
-          />
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-            <Button variant="ghost" onClick={() => setModalOpen(false)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={save}
-              loading={saving}
-              disabled={!key.trim() || !label.trim() || !entityKind.trim()}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </Page>
   );
 }

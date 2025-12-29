@@ -6,3 +6,5 @@ export { Integrations } from './Integrations';
 export { IntegrationDetail } from './IntegrationDetail';
 export { Mappings } from './Mappings';
 export { MappingsType } from './MappingsType';
+export { Segments } from './Segments';
+export { SegmentEdit } from './SegmentEdit';
