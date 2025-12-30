@@ -4,6 +4,7 @@ import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 import { authQuery } from '../lib/auth-db';
+import { rollupStorefrontMetricByProject } from '../lib/project-storefront-rollup';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
@@ -207,9 +208,46 @@ async function matchingEntityIdsForSegment(segmentKey, entityKind, entityIds) {
                 .from(base)
                 .where(eq(base.rn, 1))
                 .as('latest');
-            const whereMatch = opSql(op, sql `${latest.value}::float8`, threshold);
-            const rows = await db.select({ entityId: latest.entityId }).from(latest).where(whereMatch);
-            return new Set(rows.map((row) => String(row.entityId)));
+            const rows = await db
+                .select({
+                entityId: latest.entityId,
+                v: sql `${latest.value}::float8`.as('v'),
+            })
+                .from(latest);
+            const byId = new Map();
+            for (const row of rows) {
+                const id = String(row?.entityId ?? '').trim();
+                const v = asNumber(row?.v);
+                if (!id || v === null)
+                    continue;
+                byId.set(id, v);
+            }
+            // Fallback: project-level points missing → roll up from Storefronts entries (forms_storefronts).
+            if (entityKind === 'project') {
+                const missing = ids.filter((id) => !byId.has(id));
+                if (missing.length > 0) {
+                    const rolled = await rollupStorefrontMetricByProject({
+                        projectIds: missing,
+                        metricKey,
+                        agg: 'last',
+                        start,
+                        end,
+                    });
+                    for (const [pid, v] of rolled.entries()) {
+                        if (!byId.has(pid))
+                            byId.set(pid, v);
+                    }
+                }
+            }
+            const matched = new Set();
+            for (const id of ids) {
+                const v = byId.get(id);
+                if (v === undefined)
+                    continue;
+                if (opMatch(op, v, threshold))
+                    matched.add(id);
+            }
+            return matched;
         }
         // NOTE:
         // For "sum" (and "count"), entities with zero points are treated as 0 for bucket evaluation.
@@ -241,6 +279,23 @@ async function matchingEntityIdsForSegment(segmentKey, entityKind, entityIds) {
             if (v === null)
                 continue;
             byId.set(id, v);
+        }
+        // Fallback: project-level points missing → roll up from Storefronts entries (forms_storefronts).
+        if (entityKind === 'project') {
+            const missing = ids.filter((id) => !byId.has(id));
+            if (missing.length > 0) {
+                const rolled = await rollupStorefrontMetricByProject({
+                    projectIds: missing,
+                    metricKey,
+                    agg,
+                    start,
+                    end,
+                });
+                for (const [pid, v] of rolled.entries()) {
+                    if (!byId.has(pid))
+                        byId.set(pid, v);
+                }
+            }
         }
         const matched = new Set();
         for (const id of ids) {
