@@ -107,6 +107,8 @@ export async function GET() {
       firstPointAt: sql<Date | null>`min(${(metricsMetricPoints as any).date})`.as('firstPointAt'),
       lastPointAt: sql<Date | null>`max(${(metricsMetricPoints as any).date})`.as('lastPointAt'),
       lastUpdatedAt: sql<Date | null>`max(${(metricsMetricPoints as any).updatedAt})`.as('lastUpdatedAt'),
+      // Infer which entity kinds this metric actually exists under (helps dashboards pick correct scoping).
+      entityKinds: sql<string[] | null>`array_remove(array_agg(distinct ${(metricsMetricPoints as any).entityKind}), null)`.as('entityKinds'),
     })
     .from(metricsMetricPoints as any)
     .where(inArray((metricsMetricPoints as any).metricKey, keys))
@@ -138,7 +140,12 @@ export async function GET() {
         ? (cfg.allowed_granularities as any[]).filter((x) => typeof x === 'string')
         : undefined,
       owner: cfg.owner,
-      entity_kinds: cfg.entity_kinds,
+      // Prefer catalog-declared entity kinds; otherwise infer from points.
+      entity_kinds: Array.isArray(cfg.entity_kinds)
+        ? (cfg.entity_kinds as any[]).filter((x: any) => typeof x === 'string')
+        : Array.isArray(stat?.entityKinds)
+          ? (stat.entityKinds as any[]).filter((x: any) => typeof x === 'string' && x)
+          : undefined,
       dimensions_schema: cfg.dimensions_schema,
       ui: cfg.ui && typeof cfg.ui === 'object' ? cfg.ui : undefined,
       pointsCount: stat ? Number(stat.pointsCount || 0) : 0,

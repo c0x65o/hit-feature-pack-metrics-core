@@ -34,6 +34,19 @@ function opSql(op, left, right) {
         return sql `${left} = ${right}`;
     return sql `${left} != ${right}`;
 }
+function opMatch(op, left, right) {
+    if (op === '>=')
+        return left >= right;
+    if (op === '>')
+        return left > right;
+    if (op === '<=')
+        return left <= right;
+    if (op === '<')
+        return left < right;
+    if (op === '==')
+        return left === right;
+    return left !== right;
+}
 function windowRange(window) {
     const w = typeof window === 'string' ? window : null;
     if (!w || w === 'all_time')
@@ -198,6 +211,10 @@ async function matchingEntityIdsForSegment(segmentKey, entityKind, entityIds) {
             const rows = await db.select({ entityId: latest.entityId }).from(latest).where(whereMatch);
             return new Set(rows.map((row) => String(row.entityId)));
         }
+        // NOTE:
+        // For "sum" (and "count"), entities with zero points are treated as 0 for bucket evaluation.
+        // This is important for bucket columns like "Revenue (30d) < $100" where "no data yet" should land in the lowest bucket.
+        const treatMissingAsZero = agg === 'sum' || agg === 'count';
         const aggExpr = agg === 'sum'
             ? sql `sum(${metricsMetricPoints.value})`
             : agg === 'avg'
@@ -207,14 +224,33 @@ async function matchingEntityIdsForSegment(segmentKey, entityKind, entityIds) {
                     : agg === 'max'
                         ? sql `max(${metricsMetricPoints.value})`
                         : sql `count(*)`;
-        const having = opSql(op, sql `${aggExpr}::float8`, threshold);
         const rows = await db
-            .select({ entityId: metricsMetricPoints.entityId })
+            .select({
+            entityId: metricsMetricPoints.entityId,
+            v: sql `${aggExpr}::float8`.as('v'),
+        })
             .from(metricsMetricPoints)
             .where(and(...whereParts))
-            .groupBy(metricsMetricPoints.entityId)
-            .having(having);
-        return new Set(rows.map((row) => String(row.entityId)));
+            .groupBy(metricsMetricPoints.entityId);
+        const byId = new Map();
+        for (const row of rows) {
+            const id = String(row?.entityId ?? '').trim();
+            const v = asNumber(row?.v);
+            if (!id)
+                continue;
+            if (v === null)
+                continue;
+            byId.set(id, v);
+        }
+        const matched = new Set();
+        for (const id of ids) {
+            const v = byId.has(id) ? byId.get(id) : (treatMissingAsZero ? 0 : null);
+            if (v === null)
+                continue;
+            if (opMatch(op, v, threshold))
+                matched.add(id);
+        }
+        return matched;
     }
     return new Set();
 }

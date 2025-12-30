@@ -245,6 +245,16 @@ api:
       handler: "@hit/feature-pack-metrics-core/server/api/segments-table-buckets-evaluate"
       description: "Evaluate bucket column value for a set of entityIds (first-match wins)"
 
+    - path: /api/metrics/segments/table-metrics
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments-table-metrics"
+      description: "List computed metric columns linked to a tableId (metric-backed table columns)"
+
+    - path: /api/metrics/segments/table-metrics/evaluate
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/segments-table-metrics"
+      description: "Evaluate computed metric column values for a set of entityIds"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPENDENCIES
 # ─────────────────────────────────────────────────────────────────────────────
