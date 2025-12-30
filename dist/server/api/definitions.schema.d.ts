@@ -17,9 +17,9 @@ export declare const postBodySchema: z.ZodObject<{
     label: string;
     unit: string;
     isActive: boolean;
+    sortOrder: number;
     defaultGranularity: string;
     rollupStrategy: string;
-    sortOrder: number;
     description?: string | null | undefined;
     category?: string | null | undefined;
     allowedGranularities?: any;
@@ -31,12 +31,12 @@ export declare const postBodySchema: z.ZodObject<{
     description?: string | null | undefined;
     unit?: string | undefined;
     isActive?: boolean | undefined;
+    sortOrder?: number | undefined;
     category?: string | null | undefined;
     defaultGranularity?: string | undefined;
     allowedGranularities?: any;
     dimensionsSchema?: any;
     validationRules?: any;
     rollupStrategy?: string | undefined;
-    sortOrder?: number | undefined;
 }>;
 //# sourceMappingURL=definitions.schema.d.ts.map

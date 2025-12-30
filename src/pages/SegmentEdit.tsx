@@ -35,7 +35,7 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
     JSON.stringify(
       {
         kind: 'metric_threshold',
-        metricKey: 'revenue_usd',
+        metricKey: 'metric_key_here',
         agg: 'sum',
         op: '>=',
         value: 100000,
@@ -46,6 +46,15 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
   );
   const [isActive, setIsActive] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Optional: expose this segment as a "bucket column" for a DataTable
+  const [tableBucketEnabled, setTableBucketEnabled] = useState(false);
+  const [tableId, setTableId] = useState('projects');
+  const [columnKey, setColumnKey] = useState('');
+  const [columnLabel, setColumnLabel] = useState('');
+  const [bucketLabel, setBucketLabel] = useState('');
+  const [sortOrder, setSortOrder] = useState('0');
+  const [entityIdField, setEntityIdField] = useState('id');
 
   // Extract key from URL pathname (similar to ProviderDetail pattern)
   useEffect(() => {
@@ -89,6 +98,24 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
         setDescription(segment.description || '');
         setIsActive(Boolean(segment.isActive));
         setRuleText(JSON.stringify(segment.rule ?? { kind: 'metric_threshold' }, null, 2));
+
+        // Load table bucket metadata from rule.table if present
+        const rule = segment.rule && typeof segment.rule === 'object' ? (segment.rule as any) : null;
+        const table = rule?.table && typeof rule.table === 'object' ? (rule.table as any) : null;
+        if (table) {
+          const tId = typeof table.tableId === 'string' ? table.tableId.trim() : '';
+          const cKey = typeof table.columnKey === 'string' ? table.columnKey.trim() : '';
+          const bLabel = typeof table.bucketLabel === 'string' ? table.bucketLabel.trim() : '';
+          setTableBucketEnabled(Boolean(tId && cKey && bLabel));
+          if (tId) setTableId(tId);
+          if (cKey) setColumnKey(cKey);
+          setColumnLabel(typeof table.columnLabel === 'string' ? table.columnLabel.trim() : '');
+          setBucketLabel(bLabel);
+          setSortOrder(String(table.sortOrder ?? '0'));
+          setEntityIdField(typeof table.entityIdField === 'string' && table.entityIdField.trim() ? table.entityIdField.trim() : 'id');
+        } else {
+          setTableBucketEnabled(false);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load segment');
@@ -103,6 +130,33 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
       setError(`Rule JSON error: ${parsed.error}`);
       return;
     }
+    const nextRule = parsed.value && typeof parsed.value === 'object' ? { ...(parsed.value as any) } : parsed.value;
+    if (!nextRule || typeof nextRule !== 'object') {
+      setError('Rule must be a JSON object');
+      return;
+    }
+
+    if (tableBucketEnabled) {
+      const tId = String(tableId || '').trim();
+      const cKey = String(columnKey || '').trim();
+      const bLabel = String(bucketLabel || '').trim();
+      if (!tId) return setError('Table bucket config: tableId is required');
+      if (!cKey) return setError('Table bucket config: columnKey is required');
+      if (!bLabel) return setError('Table bucket config: bucketLabel is required');
+      const so = Number(sortOrder || 0) || 0;
+      (nextRule as any).table = {
+        tableId: tId,
+        columnKey: cKey,
+        columnLabel: String(columnLabel || '').trim() || undefined,
+        bucketLabel: bLabel,
+        sortOrder: so,
+        entityIdField: String(entityIdField || '').trim() || 'id',
+      };
+    } else if ((nextRule as any).table) {
+      // If disabled, remove any existing table linkage
+      delete (nextRule as any).table;
+    }
+
     setSaving(true);
     setError(null);
     try {
@@ -115,7 +169,7 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
             entityKind,
             label,
             description: description.trim() ? description : null,
-            rule: parsed.value,
+            rule: nextRule,
             isActive,
           }),
         });
@@ -128,7 +182,7 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
           body: JSON.stringify({
             label,
             description: description.trim() ? description : null,
-            rule: parsed.value,
+            rule: nextRule,
             isActive,
           }),
         });
@@ -194,8 +248,32 @@ export function SegmentEdit(props: { key?: string; onNavigate?: (path: string) =
               value={ruleText}
               onChange={setRuleText}
               rows={12}
-              placeholder='{"kind":"metric_threshold","metricKey":"revenue_usd","agg":"sum","op":">=","value":100000}'
+              placeholder='{"kind":"metric_threshold","metricKey":"metric_key_here","agg":"sum","op":">=","value":100000}'
             />
+
+            <div style={{ borderTop: '1px solid var(--hit-border, #e2e8f0)', paddingTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Table bucket column (optional)</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <Select
+                  label="Enabled"
+                  value={tableBucketEnabled ? 'yes' : 'no'}
+                  onChange={(v: string) => setTableBucketEnabled(v === 'yes')}
+                  options={[
+                    { value: 'no', label: 'No' },
+                    { value: 'yes', label: 'Yes' },
+                  ]}
+                />
+                <Input label="Table ID" value={tableId} onChange={setTableId} placeholder="projects" />
+                <Input label="Column Key" value={columnKey} onChange={setColumnKey} placeholder="revenue_bucket_30d" />
+                <Input label="Column Label" value={columnLabel} onChange={setColumnLabel} placeholder="Revenue Bucket (30d)" />
+                <Input label="Bucket Label" value={bucketLabel} onChange={setBucketLabel} placeholder="Under $500" />
+                <Input label="Sort Order" value={sortOrder} onChange={setSortOrder} placeholder="10" />
+                <Input label="Entity ID Field" value={entityIdField} onChange={setEntityIdField} placeholder="id" />
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--hit-muted-foreground, #64748b)' }}>
+                This links the segment into a DataTable as a derived “bucket” column for grouping. Buckets are ordered by Sort Order.
+              </div>
+            </div>
 
             <Select
               label="Status"
