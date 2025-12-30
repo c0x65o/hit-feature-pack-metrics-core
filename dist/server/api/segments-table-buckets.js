@@ -38,21 +38,23 @@ function windowRange(window) {
     const w = typeof window === 'string' ? window : null;
     if (!w || w === 'all_time')
         return { start: null, end: null };
+    // Normalize to UTC first
     const now = new Date();
+    const nowUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds(), now.getUTCMilliseconds()));
     const dayMs = 24 * 60 * 60 * 1000;
     if (w === 'last_7_days')
-        return { start: new Date(now.getTime() - 7 * dayMs), end: now };
+        return { start: new Date(nowUtc.getTime() - 7 * dayMs), end: nowUtc };
     if (w === 'last_30_days')
-        return { start: new Date(now.getTime() - 30 * dayMs), end: now };
+        return { start: new Date(nowUtc.getTime() - 30 * dayMs), end: nowUtc };
     if (w === 'last_90_days')
-        return { start: new Date(now.getTime() - 90 * dayMs), end: now };
+        return { start: new Date(nowUtc.getTime() - 90 * dayMs), end: nowUtc };
     if (w === 'month_to_date') {
-        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-        return { start, end: now };
+        const start = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), 1, 0, 0, 0, 0));
+        return { start, end: nowUtc };
     }
     if (w === 'year_to_date') {
-        const start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
-        return { start, end: now };
+        const start = new Date(Date.UTC(nowUtc.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
+        return { start, end: nowUtc };
     }
     return { start: null, end: null };
 }
