@@ -12,12 +12,10 @@ function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function requireAdminOrService(request: NextRequest) {
+function requireUserOrService(request: NextRequest) {
   const auth = getAuthContext(request);
   if (!auth) return { ok: false as const, res: jsonError('Unauthorized', 401) };
   if (auth.kind === 'service') return { ok: true as const };
-  const roles = Array.isArray(auth.user.roles) ? auth.user.roles : [];
-  if (!roles.includes('admin')) return { ok: false as const, res: jsonError('Forbidden', 403) };
   return { ok: true as const };
 }
 
@@ -351,7 +349,7 @@ async function queryMembersForSegment(args: { segmentKey: string; entityKind: st
  * Lists bucket segments (definitions) linked to a given tableId+columnKey.
  */
 export async function GET(request: NextRequest) {
-  const gate = requireAdminOrService(request);
+  const gate = requireUserOrService(request);
   if (!gate.ok) return gate.res;
 
   const url = new URL(request.url);
@@ -384,7 +382,7 @@ export async function GET(request: NextRequest) {
  *  - bucketPages?: Record<segmentKey, pageNumber>  (per bucket)
  */
 export async function POST(request: NextRequest) {
-  const gate = requireAdminOrService(request);
+  const gate = requireUserOrService(request);
   if (!gate.ok) return gate.res;
 
   const body = (await request.json().catch(() => null)) as

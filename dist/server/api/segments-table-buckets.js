@@ -9,15 +9,12 @@ export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
-function requireAdminOrService(request) {
+function requireUserOrService(request) {
     const auth = getAuthContext(request);
     if (!auth)
         return { ok: false, res: jsonError('Unauthorized', 401) };
     if (auth.kind === 'service')
         return { ok: true };
-    const roles = Array.isArray(auth.user.roles) ? auth.user.roles : [];
-    if (!roles.includes('admin'))
-        return { ok: false, res: jsonError('Forbidden', 403) };
     return { ok: true };
 }
 function asNumber(x) {
@@ -319,7 +316,7 @@ async function queryMembersForSegment(args) {
  * Lists bucket segments (definitions) linked to a given tableId+columnKey.
  */
 export async function GET(request) {
-    const gate = requireAdminOrService(request);
+    const gate = requireUserOrService(request);
     if (!gate.ok)
         return gate.res;
     const url = new URL(request.url);
@@ -351,7 +348,7 @@ export async function GET(request) {
  *  - bucketPages?: Record<segmentKey, pageNumber>  (per bucket)
  */
 export async function POST(request) {
-    const gate = requireAdminOrService(request);
+    const gate = requireUserOrService(request);
     if (!gate.ok)
         return gate.res;
     const body = (await request.json().catch(() => null));
