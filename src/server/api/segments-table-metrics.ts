@@ -3,7 +3,6 @@ import { getDb } from '@/lib/db';
 import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
-import { rollupStorefrontMetricByProject } from '../lib/project-storefront-rollup';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -249,24 +248,6 @@ export async function POST(request: NextRequest) {
       byId.set(id, v);
     }
 
-    // Fallback: if project-level points are absent, roll up from Storefronts entries (forms_storefronts).
-    if (entityKind === 'project') {
-      const missing = ids.filter((id) => !byId.has(id));
-      if (missing.length > 0) {
-        const wr = def.window && def.window !== 'all_time' ? windowRange(def.window) : { start: null, end: null };
-        const rolled = await rollupStorefrontMetricByProject({
-          projectIds: missing,
-          metricKey: def.metricKey,
-          agg: 'last',
-          start: wr.start,
-          end: wr.end,
-        });
-        for (const [pid, v] of rolled.entries()) {
-          if (!byId.has(pid)) byId.set(pid, v);
-        }
-      }
-    }
-
     for (const id of ids) {
       const v = byId.get(id);
       if (v === undefined) continue;
@@ -301,24 +282,6 @@ export async function POST(request: NextRequest) {
     const v = asNumber((row as any)?.v);
     if (!id || v === null) continue;
     byId.set(id, v);
-  }
-
-  // Fallback: project-level points missing → roll up from Storefronts entries (forms_storefronts).
-  if (entityKind === 'project') {
-    const missing = ids.filter((id) => !byId.has(id));
-    if (missing.length > 0) {
-      const wr = def.window && def.window !== 'all_time' ? windowRange(def.window) : { start: null, end: null };
-      const rolled = await rollupStorefrontMetricByProject({
-        projectIds: missing,
-        metricKey: def.metricKey,
-        agg: def.agg as any,
-        start: wr.start,
-        end: wr.end,
-      });
-      for (const [pid, v] of rolled.entries()) {
-        if (!byId.has(pid)) byId.set(pid, v);
-      }
-    }
   }
 
   for (const id of ids) {

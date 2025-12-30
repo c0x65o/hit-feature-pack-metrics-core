@@ -4,7 +4,6 @@ import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 import { authQuery } from '../lib/auth-db';
-import { rollupStorefrontMetricByProject } from '../lib/project-storefront-rollup';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
@@ -222,23 +221,6 @@ async function matchingEntityIdsForSegment(segmentKey, entityKind, entityIds) {
                     continue;
                 byId.set(id, v);
             }
-            // Fallback: project-level points missing → roll up from Storefronts entries (forms_storefronts).
-            if (entityKind === 'project') {
-                const missing = ids.filter((id) => !byId.has(id));
-                if (missing.length > 0) {
-                    const rolled = await rollupStorefrontMetricByProject({
-                        projectIds: missing,
-                        metricKey,
-                        agg: 'last',
-                        start,
-                        end,
-                    });
-                    for (const [pid, v] of rolled.entries()) {
-                        if (!byId.has(pid))
-                            byId.set(pid, v);
-                    }
-                }
-            }
             const matched = new Set();
             for (const id of ids) {
                 const v = byId.get(id);
@@ -279,23 +261,6 @@ async function matchingEntityIdsForSegment(segmentKey, entityKind, entityIds) {
             if (v === null)
                 continue;
             byId.set(id, v);
-        }
-        // Fallback: project-level points missing → roll up from Storefronts entries (forms_storefronts).
-        if (entityKind === 'project') {
-            const missing = ids.filter((id) => !byId.has(id));
-            if (missing.length > 0) {
-                const rolled = await rollupStorefrontMetricByProject({
-                    projectIds: missing,
-                    metricKey,
-                    agg,
-                    start,
-                    end,
-                });
-                for (const [pid, v] of rolled.entries()) {
-                    if (!byId.has(pid))
-                        byId.set(pid, v);
-                }
-            }
         }
         const matched = new Set();
         for (const id of ids) {
