@@ -15,9 +15,9 @@ export declare const postBodySchema: z.ZodObject<{
         value: string | number;
         date: string;
         entityKind: string;
+        metricKey: string;
         dataSourceId: string;
         entityId: string;
-        metricKey: string;
         syncRunId?: string | null | undefined;
         ingestBatchId?: string | null | undefined;
         granularity?: string | undefined;
@@ -26,9 +26,9 @@ export declare const postBodySchema: z.ZodObject<{
         value: string | number;
         date: string;
         entityKind: string;
+        metricKey: string;
         dataSourceId: string;
         entityId: string;
-        metricKey: string;
         syncRunId?: string | null | undefined;
         ingestBatchId?: string | null | undefined;
         granularity?: string | undefined;
@@ -73,9 +73,9 @@ export declare const postBodySchema: z.ZodObject<{
         value: string | number;
         date: string;
         entityKind: string;
+        metricKey: string;
         dataSourceId: string;
         entityId: string;
-        metricKey: string;
         syncRunId?: string | null | undefined;
         ingestBatchId?: string | null | undefined;
         granularity?: string | undefined;
@@ -98,9 +98,9 @@ export declare const postBodySchema: z.ZodObject<{
         value: string | number;
         date: string;
         entityKind: string;
+        metricKey: string;
         dataSourceId: string;
         entityId: string;
-        metricKey: string;
         syncRunId?: string | null | undefined;
         ingestBatchId?: string | null | undefined;
         granularity?: string | undefined;

@@ -15,8 +15,8 @@ export declare const postBodySchema: z.ZodObject<{
         groupBy: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
         groupByEntityId: z.ZodOptional<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
-        metricKey: string;
         bucket: "none" | "month" | "week" | "hour" | "day";
+        metricKey: string;
         agg: "sum" | "avg" | "min" | "max" | "last" | "count";
         end?: string | undefined;
         start?: string | undefined;
@@ -33,10 +33,10 @@ export declare const postBodySchema: z.ZodObject<{
         end?: string | undefined;
         start?: string | undefined;
         entityKind?: string | undefined;
+        bucket?: "none" | "month" | "week" | "hour" | "day" | undefined;
         dataSourceId?: string | undefined;
         entityId?: string | undefined;
         dimensions?: Record<string, string | number | boolean | null> | undefined;
-        bucket?: "none" | "month" | "week" | "hour" | "day" | undefined;
         agg?: "sum" | "avg" | "min" | "max" | "last" | "count" | undefined;
         entityIds?: string[] | undefined;
         sourceGranularity?: string | undefined;
@@ -45,8 +45,8 @@ export declare const postBodySchema: z.ZodObject<{
     }>, "many">;
 }, "strip", z.ZodTypeAny, {
     queries: {
-        metricKey: string;
         bucket: "none" | "month" | "week" | "hour" | "day";
+        metricKey: string;
         agg: "sum" | "avg" | "min" | "max" | "last" | "count";
         end?: string | undefined;
         start?: string | undefined;
@@ -65,10 +65,10 @@ export declare const postBodySchema: z.ZodObject<{
         end?: string | undefined;
         start?: string | undefined;
         entityKind?: string | undefined;
+        bucket?: "none" | "month" | "week" | "hour" | "day" | undefined;
         dataSourceId?: string | undefined;
         entityId?: string | undefined;
         dimensions?: Record<string, string | number | boolean | null> | undefined;
-        bucket?: "none" | "month" | "week" | "hour" | "day" | undefined;
         agg?: "sum" | "avg" | "min" | "max" | "last" | "count" | undefined;
         entityIds?: string[] | undefined;
         sourceGranularity?: string | undefined;
