@@ -1,1 +1,1 @@
-{"version":3,"file":"segments-key.schema.d.ts","sourceRoot":"","sources":["../../../src/server/api/segments-key.schema.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AASxB,eAAO,MAAM,aAAa;;;;;;;;;;;;;;;;;;;;;;;;;EAKxB,CAAC"}
+{"version":3,"file":"segments-key.schema.d.ts","sourceRoot":"","sources":["../../../src/server/api/segments-key.schema.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AASxB,eAAO,MAAM,aAAa;;;;;;;iBAKxB,CAAC"}

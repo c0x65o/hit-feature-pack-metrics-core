@@ -1,1 +1,1 @@
-{"version":3,"file":"definitions.schema.d.ts","sourceRoot":"","sources":["../../../src/server/api/definitions.schema.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAKxB,eAAO,MAAM,cAAc;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;EAazB,CAAC"}
+{"version":3,"file":"definitions.schema.d.ts","sourceRoot":"","sources":["../../../src/server/api/definitions.schema.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAKxB,eAAO,MAAM,cAAc;;;;;;;;;;;;;iBAazB,CAAC"}

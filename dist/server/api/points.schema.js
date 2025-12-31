@@ -12,7 +12,7 @@ export const pointsQuerySchema = z.object({
     entityId: z.string().optional(),
     entityIds: z.array(z.string()).optional(),
     dataSourceId: z.string().optional(),
-    dimensions: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+    dimensions: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
     page: z.number().int().min(1).optional().default(1),
     pageSize: z.number().int().min(1).max(500).optional().default(50),
     order: z.enum(['date_desc', 'date_asc']).optional().default('date_desc'),

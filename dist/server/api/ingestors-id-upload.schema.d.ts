@@ -1,12 +1,6 @@
 import { z } from "zod";
 export declare const postBodySchema: z.ZodObject<{
-    file: z.ZodOptional<z.ZodType<File, z.ZodTypeDef, File>>;
+    file: z.ZodOptional<z.ZodCustom<File, File>>;
     overwrite: z.ZodOptional<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    file?: File | undefined;
-    overwrite?: string | undefined;
-}, {
-    file?: File | undefined;
-    overwrite?: string | undefined;
-}>;
+}, z.core.$strip>;
 //# sourceMappingURL=ingestors-id-upload.schema.d.ts.map

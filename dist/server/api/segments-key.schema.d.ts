@@ -4,25 +4,7 @@ export declare const putBodySchema: z.ZodObject<{
     description: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     rule: z.ZodOptional<z.ZodObject<{
         kind: z.ZodString;
-    }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
-        kind: z.ZodString;
-    }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
-        kind: z.ZodString;
-    }, z.ZodTypeAny, "passthrough">>>;
+    }, z.core.$loose>>;
     isActive: z.ZodOptional<z.ZodBoolean>;
-}, "strip", z.ZodTypeAny, {
-    description?: string | null | undefined;
-    label?: string | undefined;
-    rule?: z.objectOutputType<{
-        kind: z.ZodString;
-    }, z.ZodTypeAny, "passthrough"> | undefined;
-    isActive?: boolean | undefined;
-}, {
-    description?: string | null | undefined;
-    label?: string | undefined;
-    rule?: z.objectInputType<{
-        kind: z.ZodString;
-    }, z.ZodTypeAny, "passthrough"> | undefined;
-    isActive?: boolean | undefined;
-}>;
+}, z.core.$strip>;
 //# sourceMappingURL=segments-key.schema.d.ts.map

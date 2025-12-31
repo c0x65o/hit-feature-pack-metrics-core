@@ -1,5 +1,5 @@
 import { z } from 'zod';
-const dimensionsSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
+const dimensionsSchema = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 export const drilldownSchema = z.object({
     // Either provide baseQuery + rowContext (from clicking an aggregate row),
     // or provide pointFilter directly.

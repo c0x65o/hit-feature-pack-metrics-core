@@ -14,7 +14,7 @@ const queryBodySchema = z.object({
   entityIds: z.array(z.string()).optional(),
   dataSourceId: z.string().optional(),
   sourceGranularity: z.string().optional(),
-  dimensions: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  dimensions: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   groupBy: z.array(z.string()).optional(),
   groupByEntityId: z.boolean().optional(),
 });

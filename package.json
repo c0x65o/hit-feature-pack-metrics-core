@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.62",
+  "version": "1.0.63",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -58,26 +58,26 @@
     "pg": "^8.16.3"
   },
   "peerDependencies": {
-    "@hit/ui-kit": "*",
-    "react": "^19.0.0",
-    "next": "^15.0.0",
-    "@hit/sdk": "*",
-    "zod": ">=3.22.0",
-    "lucide-react": ">=0.263.0",
-    "drizzle-orm": ">=0.38.0"
+    "@hit/sdk": "git+https://github.com/c0x65o/hit-sdk-typescript.git#8b77bff5b14ca3541a4e93830cbb913ff58331d6",
+    "@hit/ui-kit": "github:c0x65o/hit-ui-kit#4237e657aed7de52c31642dd5c27d0cc4bcbc9cf",
+    "drizzle-orm": "^0.38.0",
+    "lucide-react": "^0.460.0",
+    "next": "^15.5.9",
+    "react": "^19.2.3",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
-    "@hit/sdk": "github:c0x65o/hit-sdk-typescript",
-    "@hit/ui-kit": "github:c0x65o/hit-ui-kit",
-    "@types/node": "^20.0.0",
-    "@types/react": "^19.0.0",
+    "@hit/sdk": "git+https://github.com/c0x65o/hit-sdk-typescript.git#8b77bff5b14ca3541a4e93830cbb913ff58331d6",
+    "@hit/ui-kit": "github:c0x65o/hit-ui-kit#4237e657aed7de52c31642dd5c27d0cc4bcbc9cf",
     "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20",
     "@types/pg": "^8.15.6",
+    "@types/react": "^19.0.0",
     "drizzle-orm": "^0.38.0",
-    "zod": "^3.24.1",
     "lucide-react": "^0.460.0",
-    "typescript": "^5.0.0",
-    "next": "^15.0.0"
+    "next": "^15.5.9",
+    "typescript": "^5",
+    "zod": "^4.0.0"
   },
   "keywords": [
     "hit",

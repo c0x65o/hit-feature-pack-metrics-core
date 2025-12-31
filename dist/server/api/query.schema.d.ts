@@ -3,43 +3,28 @@ export declare const postBodySchema: z.ZodObject<{
     metricKey: z.ZodString;
     start: z.ZodOptional<z.ZodString>;
     end: z.ZodOptional<z.ZodString>;
-    bucket: z.ZodDefault<z.ZodOptional<z.ZodEnum<["none", "hour", "day", "week", "month"]>>>;
-    agg: z.ZodDefault<z.ZodOptional<z.ZodEnum<["sum", "avg", "min", "max", "count", "last"]>>>;
+    bucket: z.ZodDefault<z.ZodOptional<z.ZodEnum<{
+        none: "none";
+        month: "month";
+        week: "week";
+        hour: "hour";
+        day: "day";
+    }>>>;
+    agg: z.ZodDefault<z.ZodOptional<z.ZodEnum<{
+        sum: "sum";
+        avg: "avg";
+        min: "min";
+        max: "max";
+        last: "last";
+        count: "count";
+    }>>>;
     entityKind: z.ZodOptional<z.ZodString>;
     entityId: z.ZodOptional<z.ZodString>;
-    entityIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    entityIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
     dataSourceId: z.ZodOptional<z.ZodString>;
     sourceGranularity: z.ZodOptional<z.ZodString>;
-    dimensions: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<[z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodNull]>>>;
-    groupBy: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    dimensions: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodNull]>>>;
+    groupBy: z.ZodOptional<z.ZodArray<z.ZodString>>;
     groupByEntityId: z.ZodOptional<z.ZodBoolean>;
-}, "strip", z.ZodTypeAny, {
-    bucket: "none" | "month" | "week" | "hour" | "day";
-    metricKey: string;
-    agg: "sum" | "avg" | "min" | "max" | "last" | "count";
-    end?: string | undefined;
-    start?: string | undefined;
-    entityKind?: string | undefined;
-    dataSourceId?: string | undefined;
-    entityId?: string | undefined;
-    dimensions?: Record<string, string | number | boolean | null> | undefined;
-    entityIds?: string[] | undefined;
-    sourceGranularity?: string | undefined;
-    groupBy?: string[] | undefined;
-    groupByEntityId?: boolean | undefined;
-}, {
-    metricKey: string;
-    end?: string | undefined;
-    start?: string | undefined;
-    entityKind?: string | undefined;
-    bucket?: "none" | "month" | "week" | "hour" | "day" | undefined;
-    dataSourceId?: string | undefined;
-    entityId?: string | undefined;
-    dimensions?: Record<string, string | number | boolean | null> | undefined;
-    agg?: "sum" | "avg" | "min" | "max" | "last" | "count" | undefined;
-    entityIds?: string[] | undefined;
-    sourceGranularity?: string | undefined;
-    groupBy?: string[] | undefined;
-    groupByEntityId?: boolean | undefined;
-}>;
+}, z.core.$strip>;
 //# sourceMappingURL=query.schema.d.ts.map

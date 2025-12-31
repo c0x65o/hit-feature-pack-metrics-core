@@ -5,17 +5,5 @@ export declare const postBodySchema: z.ZodObject<{
     targetKind: z.ZodDefault<z.ZodOptional<z.ZodString>>;
     targetId: z.ZodOptional<z.ZodString>;
     metadata: z.ZodOptional<z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>>;
-}, "strip", z.ZodTypeAny, {
-    linkType: string;
-    linkId: string;
-    targetKind: string;
-    metadata?: Record<string, unknown> | null | undefined;
-    targetId?: string | undefined;
-}, {
-    linkType: string;
-    linkId: string;
-    metadata?: Record<string, unknown> | null | undefined;
-    targetKind?: string | undefined;
-    targetId?: string | undefined;
-}>;
+}, z.core.$strip>;
 //# sourceMappingURL=links.schema.d.ts.map
