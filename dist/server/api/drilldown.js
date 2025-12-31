@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
-import { getAuthContext } from '../lib/authz';
+import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { drilldownSchema } from './drilldown.schema';
 import { getAppReportTimezone } from '../lib/reporting';
 export const dynamic = 'force-dynamic';
@@ -192,6 +192,14 @@ export async function POST(request) {
     }
     catch (e) {
         return jsonError(e?.message || 'Invalid drilldown request', 400);
+    }
+    // FAIL CLOSED: check if user can read this metric
+    const metricKey = String(resolvedPointFilter?.metricKey || '').trim();
+    if (!metricKey)
+        return jsonError('Missing metricKey', 400);
+    const permissions = await checkMetricPermissions(request, [metricKey]);
+    if (!permissions[metricKey]) {
+        return jsonError(`Forbidden: you do not have permission to read metric '${metricKey}'.`, 403);
     }
     let whereBuilt;
     try {

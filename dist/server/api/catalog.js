@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { inArray, sql } from 'drizzle-orm';
+import { checkMetricPermissions } from '../lib/authz';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export async function GET() {
+export async function GET(request) {
     // Unified response:
     // - Compiled catalog (.hit/metrics/catalog.generated.ts): FP + app-level metrics (owner-aware)
     // - DB definitions (metrics_metric_definitions): ad-hoc/custom/user-defined metrics
@@ -68,6 +69,12 @@ export async function GET() {
     if (keys.length === 0) {
         return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
     }
+    // FAIL CLOSED: check metric read permissions
+    const permissions = await checkMetricPermissions(request, keys);
+    const allowedKeys = keys.filter((k) => permissions[k]);
+    if (allowedKeys.length === 0) {
+        return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
+    }
     const statsRows = await db
         .select({
         metricKey: metricsMetricPoints.metricKey,
@@ -79,13 +86,13 @@ export async function GET() {
         entityKinds: sql `array_remove(array_agg(distinct ${metricsMetricPoints.entityKind}), null)`.as('entityKinds'),
     })
         .from(metricsMetricPoints)
-        .where(inArray(metricsMetricPoints.metricKey, keys))
+        .where(inArray(metricsMetricPoints.metricKey, allowedKeys))
         .groupBy(metricsMetricPoints.metricKey);
     const byKey = new Map();
     for (const r of statsRows) {
         byKey.set(String(r.metricKey), r);
     }
-    const items = keys.map((k) => {
+    const items = allowedKeys.map((k) => {
         const cfg = mergedByKey.get(k);
         const stat = byKey.get(k);
         return {

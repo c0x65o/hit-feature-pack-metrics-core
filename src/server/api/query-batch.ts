@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
-import { getAuthContext } from '../lib/authz';
+import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -207,9 +207,16 @@ export async function POST(request: NextRequest) {
   if (!body || !Array.isArray(body.queries)) return jsonError('Invalid JSON body', 400);
   if (body.queries.length > 200) return jsonError('Too many queries (max 200)', 400);
 
+  // FAIL CLOSED: Batch check metric permissions
+  const metricKeys = Array.from(new Set(body.queries.map((q) => q.metricKey).filter(Boolean)));
+  const permissions = await checkMetricPermissions(request, metricKeys);
+
   const db = getDb();
   const results = await Promise.all(
     body.queries.map(async (q) => {
+      if (!q.metricKey || !permissions[q.metricKey]) {
+        return { error: `Forbidden: no permission to read metric '${q.metricKey}'` };
+      }
       try {
         return await runOne(db, q);
       } catch (e: any) {

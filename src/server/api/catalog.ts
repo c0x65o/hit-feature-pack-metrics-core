@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { inArray, sql } from 'drizzle-orm';
+import { checkMetricPermissions } from '../lib/authz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,7 @@ type MetricStatus = {
   lastUpdatedAt: string | null;
 };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // Unified response:
   // - Compiled catalog (.hit/metrics/catalog.generated.ts): FP + app-level metrics (owner-aware)
   // - DB definitions (metrics_metric_definitions): ad-hoc/custom/user-defined metrics
@@ -100,6 +101,14 @@ export async function GET() {
     return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
   }
 
+  // FAIL CLOSED: check metric read permissions
+  const permissions = await checkMetricPermissions(request, keys);
+  const allowedKeys = keys.filter((k) => permissions[k]);
+
+  if (allowedKeys.length === 0) {
+    return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
+  }
+
   const statsRows = await db
     .select({
       metricKey: (metricsMetricPoints as any).metricKey,
@@ -111,7 +120,7 @@ export async function GET() {
       entityKinds: sql<string[] | null>`array_remove(array_agg(distinct ${(metricsMetricPoints as any).entityKind}), null)`.as('entityKinds'),
     })
     .from(metricsMetricPoints as any)
-    .where(inArray((metricsMetricPoints as any).metricKey, keys))
+    .where(inArray((metricsMetricPoints as any).metricKey, allowedKeys))
     .groupBy((metricsMetricPoints as any).metricKey);
 
   const byKey = new Map<string, any>();
@@ -119,7 +128,7 @@ export async function GET() {
     byKey.set(String(r.metricKey), r);
   }
 
-  const items: MetricStatus[] = keys.map((k) => {
+  const items: MetricStatus[] = allowedKeys.map((k) => {
     const cfg = mergedByKey.get(k)!;
     const stat = byKey.get(k);
     return {

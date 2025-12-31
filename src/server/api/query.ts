@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
-import { getAuthContext } from '../lib/authz';
+import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +39,12 @@ export async function POST(request: NextRequest) {
 
   const metricKey = typeof body.metricKey === 'string' ? body.metricKey.trim() : '';
   if (!metricKey) return jsonError('Missing metricKey', 400);
+
+  // FAIL CLOSED: check if user can read this metric
+  const permissions = await checkMetricPermissions(request, [metricKey]);
+  if (!permissions[metricKey]) {
+    return jsonError(`Forbidden: you do not have permission to read metric '${metricKey}'.`, 403);
+  }
 
   const bucket: Bucket = body.bucket || 'day';
   if (!['none', 'hour', 'day', 'week', 'month'].includes(bucket)) return jsonError(`Invalid bucket: ${bucket}`, 400);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, desc, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
-import { getAuthContext } from '../lib/authz';
+import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { getAppReportTimezone } from '../lib/reporting';
 
 export const dynamic = 'force-dynamic';
@@ -72,6 +72,12 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const metricKey = String(searchParams.get('metricKey') || '').trim();
   if (!metricKey) return jsonError('Missing metricKey', 400);
+
+  // FAIL CLOSED: check if user can read this metric
+  const permissions = await checkMetricPermissions(request, [metricKey]);
+  if (!permissions[metricKey]) {
+    return jsonError(`Forbidden: you do not have permission to read metric '${metricKey}'.`, 403);
+  }
 
   const start = parseMaybeDate(searchParams.get('start'));
   if (searchParams.get('start') && !start) return jsonError('Invalid start', 400);

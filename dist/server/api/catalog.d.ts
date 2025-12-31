@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 export declare const runtime = "nodejs";
 export declare const dynamic = "force-dynamic";
 type MetricStatus = {
@@ -31,7 +31,7 @@ type MetricStatus = {
     lastPointAt: string | null;
     lastUpdatedAt: string | null;
 };
-export declare function GET(): Promise<NextResponse<{
+export declare function GET(request: NextRequest): Promise<NextResponse<{
     items: MetricStatus[];
     message: string | undefined;
 }>>;

@@ -9,3 +9,51 @@ export function getAuthContext(request) {
         return { kind: 'service' };
     return null;
 }
+/**
+ * Check if the current context has permission to read specific metrics.
+ * Calls the auth module batch check endpoint.
+ *
+ * @param request - Original request (to forward headers)
+ * @param metricKeys - List of metric keys to check
+ * @returns Map of metricKey -> boolean (has permission)
+ */
+export async function checkMetricPermissions(request, metricKeys) {
+    if (metricKeys.length === 0)
+        return {};
+    const ctx = getAuthContext(request);
+    if (!ctx)
+        return Object.fromEntries(metricKeys.map((k) => [k, false]));
+    // Service token bypasses individual checks (internal service-to-service communication)
+    if (ctx.kind === "service")
+        return Object.fromEntries(metricKeys.map((k) => [k, true]));
+    // Call auth module for decision
+    const authUrl = process.env.HIT_AUTH_URL || process.env.NEXT_PUBLIC_HIT_AUTH_URL;
+    if (!authUrl) {
+        console.warn("[metrics-core] HIT_AUTH_URL not configured; denying all metric access (fail closed).");
+        return Object.fromEntries(metricKeys.map((k) => [k, false]));
+    }
+    const bearer = request.headers.get("authorization") ||
+        `Bearer ${request.cookies.get("hit_token")?.value}`;
+    try {
+        const res = await fetch(`${authUrl.replace(/\/$/, "")}/permissions/metrics/check`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: bearer,
+                "X-HIT-Service-Token": process.env.HIT_SERVICE_TOKEN || "",
+                "X-Frontend-Base-URL": request.headers.get("host") || "",
+            },
+            body: JSON.stringify(metricKeys),
+        });
+        if (!res.ok) {
+            console.error(`[metrics-core] Auth batch check failed: ${res.status} ${res.statusText}`);
+            return Object.fromEntries(metricKeys.map((k) => [k, false]));
+        }
+        const decisions = (await res.json());
+        return decisions;
+    }
+    catch (e) {
+        console.error("[metrics-core] Error calling auth for metric check:", e);
+        return Object.fromEntries(metricKeys.map((k) => [k, false]));
+    }
+}
