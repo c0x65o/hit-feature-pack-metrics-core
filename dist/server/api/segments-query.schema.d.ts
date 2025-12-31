@@ -6,9 +6,9 @@ export declare const postBodySchema: z.ZodObject<{
     pageSize: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
     entityKind: string;
-    segmentKey: string;
     page: number;
     pageSize: number;
+    segmentKey: string;
 }, {
     entityKind: string;
     segmentKey: string;

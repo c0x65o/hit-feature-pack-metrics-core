@@ -185,6 +185,16 @@ api:
       handler: "@hit/feature-pack-metrics-core/server/api/query-batch"
       description: "Batch query metrics. Body: { queries: QueryBody[] }. Returns { results: Array<{data?, meta?, error?}> } in the same order as input."
 
+    - path: /api/metrics/points
+      methods: [GET]
+      handler: "@hit/feature-pack-metrics-core/server/api/points"
+      description: "Paged raw metric points listing (drilldown/export). Query params: metricKey, start/end, entityKind/entityId/entityIds, dataSourceId, dimensions (JSON), page/pageSize."
+
+    - path: /api/metrics/drilldown
+      methods: [POST]
+      handler: "@hit/feature-pack-metrics-core/server/api/drilldown"
+      description: "Derive a point-level filter from an aggregate row context and return underlying points + contributor breakdowns. Body: { baseQuery, rowContext } or { pointFilter }."
+
     - path: /api/metrics/partners
       methods: [GET]
       handler: "@hit/feature-pack-metrics-core/server/api/partners"

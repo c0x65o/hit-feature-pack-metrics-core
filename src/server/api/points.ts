@@ -1,0 +1,151 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { and, desc, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
+import { getDb } from '@/lib/db';
+import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
+import { getAuthContext } from '../lib/authz';
+import { getAppReportTimezone } from '../lib/reporting';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+export { pointsQuerySchema } from './points.schema';
+
+function jsonError(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+function parseMaybeDate(s: string | null): Date | null {
+  if (!s) return null;
+  const d = new Date(String(s));
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
+function parseDimensionsParam(raw: string | null): Record<string, any> | null {
+  if (!raw) return null;
+  const txt = String(raw).trim();
+  if (!txt) return null;
+  try {
+    const v = JSON.parse(txt);
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+    return v as any;
+  } catch {
+    return null;
+  }
+}
+
+function parseEntityIdsParam(raw: string | null): string[] {
+  if (!raw) return [];
+  // support either comma-separated or JSON array
+  const txt = String(raw).trim();
+  if (!txt) return [];
+  if (txt.startsWith('[')) {
+    try {
+      const arr = JSON.parse(txt);
+      if (Array.isArray(arr)) return arr.map((x) => String(x || '').trim()).filter(Boolean);
+    } catch {
+      // ignore
+    }
+  }
+  return txt.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * GET /api/metrics/points
+ *
+ * Paged raw metric points listing for drilldown + exports.
+ *
+ * Query params:
+ * - metricKey (required)
+ * - start/end (optional ISO strings)
+ * - entityKind/entityId/entityIds (optional; entityIds can be comma-separated or JSON array)
+ * - dataSourceId (optional)
+ * - dimensions (optional JSON object as string)
+ * - page/pageSize/order
+ */
+export async function GET(request: NextRequest) {
+  const auth = getAuthContext(request);
+  if (!auth) return jsonError('Unauthorized', 401);
+
+  const reportTimezone = await getAppReportTimezone();
+
+  const { searchParams } = new URL(request.url);
+  const metricKey = String(searchParams.get('metricKey') || '').trim();
+  if (!metricKey) return jsonError('Missing metricKey', 400);
+
+  const start = parseMaybeDate(searchParams.get('start'));
+  if (searchParams.get('start') && !start) return jsonError('Invalid start', 400);
+  const end = parseMaybeDate(searchParams.get('end'));
+  if (searchParams.get('end') && !end) return jsonError('Invalid end', 400);
+  if (start && end && end <= start) return jsonError('end must be after start', 400);
+
+  const entityKind = String(searchParams.get('entityKind') || '').trim();
+  const entityId = String(searchParams.get('entityId') || '').trim();
+  const entityIds = parseEntityIdsParam(searchParams.get('entityIds'));
+  const dataSourceId = String(searchParams.get('dataSourceId') || '').trim();
+
+  const dimensions = parseDimensionsParam(searchParams.get('dimensions'));
+  if (searchParams.get('dimensions') && !dimensions) return jsonError('Invalid dimensions (must be JSON object)', 400);
+
+  const page = Math.max(1, Number(searchParams.get('page') || 1) || 1);
+  const pageSize = Math.max(1, Math.min(500, Number(searchParams.get('pageSize') || 50) || 50));
+  const order = String(searchParams.get('order') || 'date_desc').toLowerCase();
+  const orderBy = order === 'date_asc' ? asc(metricsMetricPoints.date) : desc(metricsMetricPoints.date);
+
+  const whereParts: any[] = [eq(metricsMetricPoints.metricKey, metricKey)];
+  if (start) whereParts.push(gte(metricsMetricPoints.date, start));
+  if (end) whereParts.push(lte(metricsMetricPoints.date, end));
+  if (entityKind) whereParts.push(eq(metricsMetricPoints.entityKind, entityKind));
+  if (entityId) whereParts.push(eq(metricsMetricPoints.entityId, entityId));
+  if (entityIds.length) {
+    if (entityIds.length > 1000) return jsonError('Too many entityIds (max 1000)', 400);
+    whereParts.push(inArray(metricsMetricPoints.entityId as any, entityIds as any));
+  }
+  if (dataSourceId) whereParts.push(eq(metricsMetricPoints.dataSourceId, dataSourceId));
+
+  if (dimensions) {
+    for (const [k, v] of Object.entries(dimensions)) {
+      if (!/^[a-zA-Z0-9_]+$/.test(k)) return jsonError(`Invalid dimensions key: ${k}`, 400);
+      if (v === null) whereParts.push(sql`${metricsMetricPoints.dimensions} ->> ${k} is null`);
+      else whereParts.push(sql`${metricsMetricPoints.dimensions} ->> ${k} = ${String(v)}`);
+    }
+  }
+
+  const db = getDb();
+  const where = and(...whereParts);
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int`.as('total') })
+    .from(metricsMetricPoints)
+    .where(where);
+
+  const offset = (page - 1) * pageSize;
+  const rows = await db
+    .select({
+      id: metricsMetricPoints.id,
+      metricKey: metricsMetricPoints.metricKey,
+      entityKind: metricsMetricPoints.entityKind,
+      entityId: metricsMetricPoints.entityId,
+      dataSourceId: metricsMetricPoints.dataSourceId,
+      syncRunId: metricsMetricPoints.syncRunId,
+      ingestBatchId: metricsMetricPoints.ingestBatchId,
+      date: metricsMetricPoints.date,
+      granularity: metricsMetricPoints.granularity,
+      value: metricsMetricPoints.value,
+      dimensions: metricsMetricPoints.dimensions,
+      createdAt: metricsMetricPoints.createdAt,
+      updatedAt: metricsMetricPoints.updatedAt,
+    })
+    .from(metricsMetricPoints)
+    .where(where)
+    .orderBy(orderBy, desc(metricsMetricPoints.id))
+    .limit(pageSize)
+    .offset(offset);
+
+  return NextResponse.json({
+    meta: { reportTimezone },
+    data: rows,
+    pagination: { page, pageSize, total: Number(total || 0) },
+  });
+}
+
