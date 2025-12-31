@@ -47,6 +47,10 @@ export async function checkMetricPermissions(
     request.headers.get("authorization") ||
     `Bearer ${request.cookies.get("hit_token")?.value}`;
 
+  const host = request.headers.get("host") || "";
+  const proto = request.headers.get("x-forwarded-proto") || "http";
+  const frontendBaseUrl = host ? `${proto}://${host}` : "";
+
   try {
     const res = await fetch(`${authUrl.replace(/\/$/, "")}/permissions/metrics/check`, {
       method: "POST",
@@ -54,7 +58,7 @@ export async function checkMetricPermissions(
         "Content-Type": "application/json",
         Authorization: bearer,
         "X-HIT-Service-Token": process.env.HIT_SERVICE_TOKEN || "",
-        "X-Frontend-Base-URL": request.headers.get("host") || "",
+        "X-Frontend-Base-URL": frontendBaseUrl,
       },
       body: JSON.stringify(metricKeys),
     });
