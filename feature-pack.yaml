@@ -2,6 +2,7 @@
 # A HIT feature pack
 
 name: metrics-core
+title: HIT Metrics
 description: "Core metrics system: metric definitions, data sources, ingestion, and fast aggregation APIs"
 
 # ─────────────────────────────────────────────────────────────────────────────
