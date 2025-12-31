@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.60",
+  "version": "1.0.61",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -70,11 +70,11 @@
     "@hit/sdk": "github:c0x65o/hit-sdk-typescript",
     "@hit/ui-kit": "github:c0x65o/hit-ui-kit",
     "@types/node": "^20.0.0",
-    "@types/react": "^18.2.0",
+    "@types/react": "^18.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/pg": "^8.15.6",
     "drizzle-orm": "^0.30.0",
-    "zod": "^3.22.0",
+    "zod": "^3.24.1",
     "lucide-react": "^0.460.0",
     "typescript": "^5.0.0",
     "next": "^14.2.5"
