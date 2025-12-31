@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.65",
+  "version": "1.0.66",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -64,11 +64,11 @@
     "lucide-react": "^0.460.0",
     "next": "^15.5.9",
     "react": "^19.2.3",
-    "zod": "^4.0.0"
+    "zod": "^4.3.2"
   },
   "devDependencies": {
-    "@hit/sdk": "git+https://github.com/c0x65o/hit-sdk-typescript.git#8b77bff5b14ca3541a4e93830cbb913ff58331d6",
-    "@hit/ui-kit": "github:c0x65o/hit-ui-kit#4237e657aed7de52c31642dd5c27d0cc4bcbc9cf",
+    "@hit/sdk": "file:../../hit-sdks/hit-sdk-typescript",
+    "@hit/ui-kit": "file:../hit-ui-kit",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
     "@types/pg": "^8.15.6",
@@ -77,7 +77,7 @@
     "lucide-react": "^0.460.0",
     "next": "^15.5.9",
     "typescript": "^5",
-    "zod": "^4.0.0"
+    "zod": "^4.3.2"
   },
   "keywords": [
     "hit",
