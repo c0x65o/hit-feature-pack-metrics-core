@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.70",
+  "version": "1.0.71",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -52,7 +52,6 @@
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
     "dev": "tsc --watch",
-    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
