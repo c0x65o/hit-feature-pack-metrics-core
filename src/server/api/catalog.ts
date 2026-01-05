@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { inArray, sql } from 'drizzle-orm';
-import { checkMetricPermissions } from '../lib/authz';
+import { checkMetricPermissions, isAdminUser } from '../lib/authz';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -101,12 +101,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
   }
 
-  // FAIL CLOSED: check metric read permissions
-  const permissions = await checkMetricPermissions(request, keys);
-  const allowedKeys = keys.filter((k) => permissions[k]);
+  // Admin mode: ?admin=true returns all metrics without ACL filtering.
+  // Used by the security group UI to show all available metrics for permission configuration.
+  const adminMode = request.nextUrl.searchParams.get('admin') === 'true';
+  let allowedKeys: string[];
 
-  if (allowedKeys.length === 0) {
-    return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
+  if (adminMode && isAdminUser(request)) {
+    // Admin requesting full catalog for permission configuration
+    allowedKeys = keys;
+  } else {
+    // FAIL CLOSED: check metric read permissions
+    const permissions = await checkMetricPermissions(request, keys);
+    allowedKeys = keys.filter((k) => permissions[k]);
+
+    if (allowedKeys.length === 0) {
+      return NextResponse.json({ items: [], message: catalogMissingMessage || undefined });
+    }
   }
 
   const statsRows = await db

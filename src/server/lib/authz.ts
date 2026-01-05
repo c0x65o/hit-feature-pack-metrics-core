@@ -17,6 +17,18 @@ export function getAuthContext(request: NextRequest): AuthContext | null {
 }
 
 /**
+ * Check if the current user is an admin (has 'admin' in roles).
+ * Used for admin-only operations like viewing the full metrics catalog.
+ */
+export function isAdminUser(request: NextRequest): boolean {
+  const ctx = getAuthContext(request);
+  if (!ctx) return false;
+  if (ctx.kind === 'service') return true; // Service tokens are trusted
+  const roles = ctx.user.roles || [];
+  return roles.some((r) => r.toLowerCase() === 'admin');
+}
+
+/**
  * Check if the current context has permission to read specific metrics.
  * Calls the auth module batch check endpoint.
  *
@@ -43,9 +55,13 @@ export async function checkMetricPermissions(
     return Object.fromEntries(metricKeys.map((k) => [k, false]));
   }
 
-  const bearer =
-    request.headers.get("authorization") ||
-    `Bearer ${request.cookies.get("hit_token")?.value}`;
+  const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
+  const cookieToken = request.cookies.get("hit_token")?.value;
+  const bearer = authHeader ? authHeader : (cookieToken ? `Bearer ${cookieToken}` : "");
+  if (!bearer || bearer === "Bearer undefined") {
+    console.warn("[metrics-core] Missing user bearer token for metric permission check; denying (fail closed).");
+    return Object.fromEntries(metricKeys.map((k) => [k, false]));
+  }
 
   const host = request.headers.get("host") || "";
   const proto = request.headers.get("x-forwarded-proto") || "http";
