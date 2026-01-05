@@ -31,7 +31,13 @@ export function extractUserFromRequest(request: NextRequest): User | null {
     if (parts.length !== 3) return null;
     const payload = JSON.parse(atob(parts[1]));
     if (payload.exp && payload.exp * 1000 < Date.now()) return null;
-    return { sub: payload.sub, email: payload.email || '', roles: payload.roles || [] };
+    const rolesRaw = Array.isArray(payload.roles) ? payload.roles : [];
+    const roleSingle = typeof payload.role === 'string' ? payload.role : '';
+    const roles: string[] = rolesRaw
+      .map((r: any) => String(r || '').trim())
+      .filter(Boolean);
+    if (roleSingle && !roles.includes(roleSingle)) roles.unshift(roleSingle);
+    return { sub: payload.sub, email: payload.email || payload.sub || '', roles };
   } catch {
     return null;
   }
