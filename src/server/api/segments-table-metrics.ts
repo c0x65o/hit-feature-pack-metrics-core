@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas';
+import { metricsLinks, metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
+import { jsonb, pgTable, varchar } from 'drizzle-orm/pg-core';
 import { getAuthContext, checkMetricPermissions, isAdminUser } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,14 @@ type MetricColumnDef = {
   decimals: number | null;
   sortOrder: number;
 };
+
+// NOTE:
+// metrics-core builds in isolation, so we cannot depend on projects feature pack schemas at build time.
+// We define the minimal shape needed for the "project revenue via steam_app_id dimension" fallback.
+const projectsTable = pgTable('projects', {
+  id: varchar('id', { length: 255 }).notNull(),
+  slug: varchar('slug', { length: 255 }).notNull(),
+});
 
 function parseMetricColumnFromSegmentRow(r: any): MetricColumnDef | null {
   const rule = (r?.rule && typeof r.rule === 'object' ? r.rule : null) as any;
@@ -301,6 +310,91 @@ export async function POST(request: NextRequest) {
     const v = byId.has(id) ? (byId.get(id) as number) : (treatMissingAsZero ? 0 : undefined);
     if (v === undefined) continue;
     values[id] = v;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fallback for Projects revenue columns in production:
+  //
+  // In some deployments, sales metrics (e.g. gross_revenue_usd) are ingested under
+  // entity_kind = forms_storefronts (or other), NOT entity_kind = project.
+  //
+  // The Projects table expects per-project values. We can derive them by summing
+  // points by the steam_app_id dimension, using metrics_links metadata that maps
+  // project_slug -> steam_app_id (created by field-mapper mapping).
+  //
+  // We ONLY apply this fallback when:
+  // - table entityKind is "project"
+  // - agg is sum/avg/min/max/count (not last)
+  // - and the direct entity_kind=project lookup produced no rows for the requested ids
+  // ---------------------------------------------------------------------------
+  const shouldTrySteamAppFallback =
+    entityKind === 'project' &&
+    def.metricKey &&
+    // Keep this narrow: only apply to USD-like metrics for now.
+    (def.metricKey.endsWith('_usd') || def.metricKey.includes('revenue'));
+
+  if (shouldTrySteamAppFallback && byId.size === 0) {
+    try {
+      // Build project_id -> [steam_app_id...] mapping from metrics_links metadata.
+      // We intentionally join by metadata.project_slug so this works even when the
+      // mapping's target_kind is not "project" (e.g. forms_storefronts).
+      const idList2 = ids.map((id) => sql`${id}`);
+
+      const ml = metricsLinks as any;
+      const mp = metricsMetricPoints as any;
+
+      const whereLinks = and(
+        sql`${projectsTable.id} in (${sql.join(idList2, sql`, `)})`,
+        eq(ml.linkType, 'metrics.field_mapper'),
+        sql`(${ml.metadata} ->> 'project_slug') = ${projectsTable.slug}`,
+        sql`coalesce((${ml.metadata} ->> 'steam_app_id'), '') <> ''`
+      );
+
+      // Apply time window (same as main path).
+      const timeParts: any[] = [];
+      if (def.window && def.window !== 'all_time') {
+        const wr = windowRange(def.window);
+        if (wr.start) timeParts.push(gte(mp.date, wr.start));
+        if (wr.end) timeParts.push(lte(mp.date, wr.end));
+      }
+
+      const rows2 = await db
+        .select({
+          projectId: projectsTable.id,
+          v: sql`${aggExpr}::float8`.as('v'),
+        } as any)
+        .from(projectsTable as any)
+        .innerJoin(ml, whereLinks as any)
+        .innerJoin(
+          mp,
+          and(
+            eq(mp.metricKey, def.metricKey),
+            // match by steam_app_id dimension (regardless of entityKind/entityId)
+            sql`(${mp.dimensions} ->> 'steam_app_id') = (${ml.metadata} ->> 'steam_app_id')`,
+            ...timeParts
+          ) as any
+        )
+        .groupBy(projectsTable.id);
+
+      const byProject = new Map<string, number>();
+      for (const row of rows2 as any[]) {
+        const pid = String((row as any)?.projectId ?? '').trim();
+        const v = asNumber((row as any)?.v);
+        if (!pid || v === null) continue;
+        byProject.set(pid, v);
+      }
+
+      if (byProject.size > 0) {
+        // Overwrite values with fallback values where available; keep zeros for others.
+        for (const id of ids) {
+          const v = byProject.has(id) ? (byProject.get(id) as number) : (treatMissingAsZero ? 0 : undefined);
+          if (v === undefined) continue;
+          values[id] = v;
+        }
+      }
+    } catch {
+      // Best-effort fallback; keep existing values (likely zeros).
+    }
   }
 
   return NextResponse.json({ data: { values } });
