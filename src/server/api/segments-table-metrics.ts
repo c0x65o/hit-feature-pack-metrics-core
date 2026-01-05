@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
-import { getAuthContext } from '../lib/authz';
+import { getAuthContext, checkMetricPermissions, isAdminUser } from '../lib/authz';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -203,6 +203,17 @@ export async function POST(request: NextRequest) {
 
   const def = await loadMetricColumn({ tableId, columnKey, entityKind });
   if (!def) return jsonError(`Metric column not found: ${tableId}.${columnKey} (${entityKind})`, 404);
+
+  // Check metric ACL: admin bypasses, otherwise check via auth module.
+  // If the user doesn't have access to this metricKey, return empty values.
+  const auth = getAuthContext(request);
+  if (auth?.kind !== 'service' && !isAdminUser(request)) {
+    const permissions = await checkMetricPermissions(request, [def.metricKey]);
+    if (!permissions[def.metricKey]) {
+      // User doesn't have access to this metric - return empty values (fail closed for data access)
+      return NextResponse.json({ data: { values: {} } });
+    }
+  }
 
   const db = getDb();
   const ids = entityIds;
