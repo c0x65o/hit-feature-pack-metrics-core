@@ -222,7 +222,7 @@ export function MappingsType(props: { type?: string; onNavigate?: (path: string)
               { key: 'linkId', label: 'Link ID' },
               { key: 'steam', label: 'steam_app_id' },
               { key: 'updated', label: 'Updated' },
-              { key: 'actions', label: '' },
+              { key: 'actions', label: '', hideable: false },
             ]}
             data={rows.map((r) => ({
               linkId: r.linkId,

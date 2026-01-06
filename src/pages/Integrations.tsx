@@ -72,7 +72,7 @@ export function Integrations(props: { onNavigate?: (path: string) => void }) {
             { key: 'label', label: 'Partner' },
             { key: 'status', label: 'Status' },
             { key: 'lastVerified', label: 'Last verified' },
-            { key: 'actions', label: '' },
+            { key: 'actions', label: '', hideable: false },
           ]}
           data={items.map((p) => ({
             label: (
