@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.80",
+  "version": "1.0.81",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -69,7 +69,7 @@
   },
   "devDependencies": {
     "@hit/sdk": "file:../../hit-sdks/hit-sdk-typescript",
-    "@hit/ui-kit": "file:../hit-ui-kit",
+    "@hit/ui-kit": "file:../../packages/hit-ui-kit-ts",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
     "@types/pg": "^8.15.6",
