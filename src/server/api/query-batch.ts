@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
+import { tryRunComputedMetricQuery, type QueryBody as ComputedQueryBody } from '../lib/computed-metrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,6 +32,22 @@ type QueryBody = {
 };
 
 type BatchBody = { queries: QueryBody[] };
+
+async function loadCatalogEntries(metricKeys: string[]): Promise<Record<string, any>> {
+  const out: Record<string, any> = {};
+  try {
+    const mod = await import('@/.hit/metrics/catalog.generated');
+    const cat = (mod as any)?.METRICS_CATALOG;
+    if (!cat || typeof cat !== 'object') return out;
+    for (const mk of metricKeys) {
+      const e = (cat as any)[mk];
+      if (e && typeof e === 'object') out[mk] = e;
+    }
+  } catch {
+    // ignore
+  }
+  return out;
+}
 
 async function runOne(db: ReturnType<typeof getDb>, body: QueryBody) {
   const metricKey = typeof body.metricKey === 'string' ? body.metricKey.trim() : '';
@@ -212,12 +229,34 @@ export async function POST(request: NextRequest) {
   const permissions = await checkMetricPermissions(request, metricKeys);
 
   const db = getDb();
+  const catalogByKey = await loadCatalogEntries(metricKeys);
+  const pointKeyRows =
+    metricKeys.length > 0
+      ? await db
+          .select({ metricKey: (metricsMetricPoints as any).metricKey })
+          .from(metricsMetricPoints as any)
+          .where(inArray((metricsMetricPoints as any).metricKey, metricKeys as any))
+          .groupBy((metricsMetricPoints as any).metricKey)
+      : [];
+  const keysWithPoints = new Set<string>((pointKeyRows as any[]).map((r) => String(r?.metricKey || '').trim()).filter(Boolean));
+
   const results = await Promise.all(
     body.queries.map(async (q) => {
       if (!q.metricKey || !permissions[q.metricKey]) {
         return { error: `Forbidden: no permission to read metric '${q.metricKey}'` };
       }
       try {
+        if (!keysWithPoints.has(q.metricKey)) {
+          const computed = await tryRunComputedMetricQuery({
+            db,
+            body: q as unknown as ComputedQueryBody,
+            catalogEntry: catalogByKey[q.metricKey],
+          });
+          if (computed) {
+            if (!computed.ok) return { error: computed.error };
+            return { data: computed.data, meta: computed.meta };
+          }
+        }
         return await runOne(db, q);
       } catch (e: any) {
         return { error: e?.message || 'Query failed' };

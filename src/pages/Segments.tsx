@@ -162,7 +162,7 @@ export function Segments(props: { onNavigate?: (path: string) => void }) {
             { key: 'label', label: 'Label' },
             { key: 'status', label: 'Status' },
             { key: 'rule', label: 'Rule' },
-            { key: 'actions', label: '', hideable: false },
+            { key: 'actions', label: '' },
           ]}
           data={rows.map((r) => ({
             key: (

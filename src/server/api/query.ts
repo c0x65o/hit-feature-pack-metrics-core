@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
+import { tryRunComputedMetricQuery, type QueryBody as ComputedQueryBody } from '../lib/computed-metrics';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,6 +31,18 @@ type QueryBody = {
   groupByEntityId?: boolean;
 };
 
+async function loadCatalogEntry(metricKey: string): Promise<any | null> {
+  try {
+    const mod = await import('@/.hit/metrics/catalog.generated');
+    const cat = (mod as any)?.METRICS_CATALOG;
+    if (!cat || typeof cat !== 'object') return null;
+    const e = (cat as any)[metricKey];
+    return e && typeof e === 'object' ? e : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const auth = getAuthContext(request);
   if (!auth) return jsonError('Unauthorized', 401);
@@ -44,6 +57,33 @@ export async function POST(request: NextRequest) {
   const permissions = await checkMetricPermissions(request, [metricKey]);
   if (!permissions[metricKey]) {
     return jsonError(`Forbidden: you do not have permission to read metric '${metricKey}'.`, 403);
+  }
+
+  // Computed metrics fallback (for metrics declared in catalog but not stored as points).
+  // Strategy:
+  // - If we have points, use points query (canonical path).
+  // - If we do not have points, and catalog owner indicates a supported computed metric, compute from source tables.
+  const catalogEntry = await loadCatalogEntry(metricKey);
+  try {
+    const db = getDb();
+    const hasPoint = await db
+      .select({ one: sql<number>`1`.as('one') })
+      .from(metricsMetricPoints as any)
+      .where(eq((metricsMetricPoints as any).metricKey, metricKey))
+      .limit(1);
+    if (!hasPoint.length) {
+      const computed = await tryRunComputedMetricQuery({
+        db,
+        body: body as unknown as ComputedQueryBody,
+        catalogEntry: catalogEntry || undefined,
+      });
+      if (computed) {
+        if (!computed.ok) return jsonError(computed.error, 400);
+        return NextResponse.json({ data: computed.data, meta: computed.meta });
+      }
+    }
+  } catch {
+    // If computed fallback fails unexpectedly, continue to points path (which may return empty).
   }
 
   const bucket: Bucket = body.bucket || 'day';

@@ -86,7 +86,7 @@ export function Mappings(props: { onNavigate?: (path: string) => void }) {
               { key: 'target', label: 'Target' },
               { key: 'metadata', label: 'Metadata' },
               { key: 'updated', label: 'Updated' },
-              { key: 'actions', label: '', hideable: false },
+              { key: 'actions', label: '' },
             ]}
             data={rows.map((r) => ({
               linkType: r.linkType,
