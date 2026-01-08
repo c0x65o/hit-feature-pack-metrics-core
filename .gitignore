@@ -34,7 +34,6 @@ coverage/
 # Temporary files
 *.tmp
 .cache/
-dist/
 __pycache__/
 *.py[cod]
 *.map
