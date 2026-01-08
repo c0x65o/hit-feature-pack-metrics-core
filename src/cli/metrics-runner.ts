@@ -124,7 +124,13 @@ type RequiredPoint = {
 };
 
 function parseArgs(argv: string[]): RunnerArgs {
-  const baseUrl = process.env.HIT_APP_URL || 'http://localhost:3000';
+  // Prefer HIT_APP_URL when explicitly set (internal cluster DNS), otherwise accept
+  // HIT_APP_PUBLIC_URL which is injected by the app's tasks proxy for UI-triggered runs.
+  const portGuess = process.env.PORT || '3002';
+  const baseUrl =
+    process.env.HIT_APP_URL ||
+    process.env.HIT_APP_PUBLIC_URL ||
+    `http://localhost:${portGuess}`;
   const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
 
   const out: Omit<RunnerArgs, 'command' | 'commandArgs'> & { command?: string; commandArgs?: string[] } = {

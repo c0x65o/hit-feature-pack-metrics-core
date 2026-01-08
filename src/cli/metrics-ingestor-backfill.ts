@@ -48,7 +48,14 @@ type Args = {
 };
 
 function parseArgs(argv: string[]): Args {
-  const baseUrl = process.env.HIT_APP_URL || 'http://localhost:3000';
+  // In production, tasks are typically triggered via the app and may receive HIT_APP_PUBLIC_URL
+  // (see app/api/proxy/tasks env injection). Prefer HIT_APP_URL when explicitly set, otherwise
+  // fall back to HIT_APP_PUBLIC_URL, and finally localhost on the common Next port.
+  const portGuess = process.env.PORT || '3002';
+  const baseUrl =
+    process.env.HIT_APP_URL ||
+    process.env.HIT_APP_PUBLIC_URL ||
+    `http://localhost:${portGuess}`;
   const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
 
   const out: Args = {

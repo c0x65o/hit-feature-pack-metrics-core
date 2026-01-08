@@ -82,7 +82,12 @@ export async function main() {
     const token = process.env.HIT_SERVICE_TOKEN;
     if (!token)
         throw new Error('Missing HIT_SERVICE_TOKEN env var (required).');
-    const baseUrl = process.env.HIT_APP_URL || 'http://localhost:3000';
+    // Prefer HIT_APP_URL when explicitly set (internal cluster DNS), otherwise accept
+    // HIT_APP_PUBLIC_URL which is injected by the app's tasks proxy for UI-triggered runs.
+    const portGuess = process.env.PORT || '3002';
+    const baseUrl = process.env.HIT_APP_URL ||
+        process.env.HIT_APP_PUBLIC_URL ||
+        `http://localhost:${portGuess}`;
     const hitYamlPath = path.join(process.cwd(), 'hit.yaml');
     const hitYamlRaw = fs.readFileSync(hitYamlPath, 'utf8');
     const cfg = yaml.load(hitYamlRaw) || {};
