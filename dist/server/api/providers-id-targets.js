@@ -15,6 +15,20 @@ function appRoot() {
     return process.cwd();
 }
 function ingestorYamlPath(id) {
+    let cur = appRoot();
+    for (let i = 0; i < 10; i++) {
+        const candidate = path.join(cur, '.hit', 'metrics', 'ingestors', `${id}.yaml`);
+        if (fs.existsSync(candidate))
+            return candidate;
+        const candidate2 = path.join(cur, '.hit', 'metrics', 'ingestors', `${id}.yml`);
+        if (fs.existsSync(candidate2))
+            return candidate2;
+        const parent = path.dirname(cur);
+        if (!parent || parent === cur)
+            break;
+        cur = parent;
+    }
+    // Default (will 404 later) — keep error behavior stable.
     return path.join(appRoot(), '.hit', 'metrics', 'ingestors', `${id}.yaml`);
 }
 function getPath(obj, pathStr) {

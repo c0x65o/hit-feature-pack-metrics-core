@@ -11,12 +11,28 @@ function jsonError(message, status = 400) {
 function appRoot() {
     return process.cwd();
 }
+function findHitDir(startDir) {
+    const checked = [];
+    let cur = startDir;
+    for (let i = 0; i < 10; i++) {
+        const candidate = path.join(cur, '.hit', 'metrics', 'ingestors');
+        checked.push(candidate);
+        if (fs.existsSync(candidate))
+            return { dir: candidate, checked };
+        const parent = path.dirname(cur);
+        if (!parent || parent === cur)
+            break;
+        cur = parent;
+    }
+    return { dir: null, checked };
+}
 function ingestorsDir() {
-    return path.join(appRoot(), '.hit', 'metrics', 'ingestors');
+    const found = findHitDir(appRoot());
+    return found.dir;
 }
 function listIngestorFiles() {
     const dir = ingestorsDir();
-    if (!fs.existsSync(dir))
+    if (!dir)
         return [];
     return fs
         .readdirSync(dir, { withFileTypes: true })

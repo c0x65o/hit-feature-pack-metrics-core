@@ -16,13 +16,30 @@ function jsonError(message, status = 400) {
 function appRoot() {
     return process.cwd();
 }
+function findIngestorsDir(startDir) {
+    const checked = [];
+    let cur = startDir;
+    for (let i = 0; i < 10; i++) {
+        const candidate = path.join(cur, '.hit', 'metrics', 'ingestors');
+        checked.push(candidate);
+        if (fs.existsSync(candidate))
+            return { dir: candidate, checked };
+        const parent = path.dirname(cur);
+        if (!parent || parent === cur)
+            break;
+        cur = parent;
+    }
+    return { dir: null, checked };
+}
 function ingestorsDir() {
-    return path.join(appRoot(), '.hit', 'metrics', 'ingestors');
+    const found = findIngestorsDir(appRoot());
+    return found.dir;
 }
 function loadIngestorOrThrow(id) {
-    const dir = ingestorsDir();
-    if (!fs.existsSync(dir))
-        throw new Error('Ingestors directory not found (.hit/metrics/ingestors)');
+    const { dir, checked } = findIngestorsDir(appRoot());
+    if (!dir) {
+        throw new Error(`Ingestors directory not found. Checked:\n` + checked.map((p) => `- ${p}`).join('\n'));
+    }
     const files = fs
         .readdirSync(dir, { withFileTypes: true })
         .filter((e) => e.isFile() && (e.name.endsWith('.yaml') || e.name.endsWith('.yml')))
