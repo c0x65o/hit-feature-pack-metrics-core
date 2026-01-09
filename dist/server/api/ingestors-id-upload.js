@@ -437,7 +437,12 @@ export async function POST(request, ctx) {
     const inferredSteamAppIdForDims = steamAppIdHint || '';
     if (ingestorId === 'steam-sales') {
         try {
-            parsed = parseSteamDailySales(content, '');
+            // IMPORTANT:
+            // Some Steam "Sales Data" exports (notably certain in-game sales formats) do not include Product(ID),
+            // which would otherwise cause steam_app_id to become "unknown" and break the Projects revenue
+            // steam_app_id fallback join. Use the mapped steam_app_id (from metrics_links.metadata) as a
+            // fallback so dimensions stay stable across formats.
+            parsed = parseSteamDailySales(content, inferredSteamAppIdForDims);
         }
         catch (e) {
             return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
