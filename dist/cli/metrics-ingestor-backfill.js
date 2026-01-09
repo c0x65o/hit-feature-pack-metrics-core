@@ -210,6 +210,7 @@ async function uploadOne(args, ingestorId, filePath) {
 }
 export async function main() {
     const args = parseArgs(process.argv.slice(2));
+    console.log(`Base URL: ${args.baseUrl}`);
     const cfg = loadIngestorOrThrow(args.id);
     if (!cfg.backfill?.enabled)
         throw new Error(`Backfill disabled for ingestor: ${args.id}`);
