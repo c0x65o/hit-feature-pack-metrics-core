@@ -1,7 +1,9 @@
 'use client';
 import { jsxs as _jsxs, jsx as _jsx } from "react/jsx-runtime";
 import React from 'react';
-import { Button, Card, Badge } from '@hit/ui-kit';
+import { Badge } from '@hit/ui-kit/components/Badge';
+import { Button } from '@hit/ui-kit/components/Button';
+import { Card } from '@hit/ui-kit/components/Card';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 export function ProviderDetail() {
     const [id, setId] = React.useState('');

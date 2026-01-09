@@ -1,7 +1,8 @@
 'use client';
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React from 'react';
-import { Button, Card } from '@hit/ui-kit';
+import { Button } from '@hit/ui-kit/components/Button';
+import { Card } from '@hit/ui-kit/components/Card';
 export function DataSources() {
     const [sources, setSources] = React.useState([]);
     const [loading, setLoading] = React.useState(true);

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertDialog, useAlertDialog, useUi } from '@hit/ui-kit';
+import { useUi } from '@hit/ui-kit';
+import { AlertDialog } from '@hit/ui-kit/components/AlertDialog';
+import { useAlertDialog } from '@hit/ui-kit/hooks/useAlertDialog';
 
 type Field = {
   key: string;

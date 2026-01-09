@@ -1,7 +1,9 @@
 'use client';
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React from 'react';
-import { Button, Card, Badge } from '@hit/ui-kit';
+import { Badge } from '@hit/ui-kit/components/Badge';
+import { Button } from '@hit/ui-kit/components/Button';
+import { Card } from '@hit/ui-kit/components/Card';
 function badgeFor(ok, labelOk, labelBad, labelUnknown = '—') {
     if (ok === null)
         return _jsx(Badge, { variant: "default", children: labelUnknown });

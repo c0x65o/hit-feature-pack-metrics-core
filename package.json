@@ -1,42 +1,48 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.90",
+  "version": "1.0.91",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "exports": {
     ".": {
+      "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./pages/*": {
+      "development": "./src/pages/*.tsx",
       "types": "./dist/pages/*.d.ts",
       "import": "./dist/pages/*.js",
       "require": "./dist/pages/*.js",
       "default": "./dist/pages/*.js"
     },
     "./schema": {
+      "development": "./src/schema/metrics-core.ts",
       "types": "./dist/schema/metrics-core.d.ts",
       "import": "./dist/schema/metrics-core.js",
       "require": "./dist/schema/metrics-core.js",
       "default": "./dist/schema/metrics-core.js"
     },
     "./server/api/*": {
+      "development": "./src/server/api/*.ts",
       "types": "./dist/server/api/*.d.ts",
       "import": "./dist/server/api/*.js",
       "require": "./dist/server/api/*.js",
       "default": "./dist/server/api/*.js"
     },
     "./server/lib/*": {
+      "development": "./src/server/lib/*.ts",
       "types": "./dist/server/lib/*.d.ts",
       "import": "./dist/server/lib/*.js",
       "require": "./dist/server/lib/*.js",
       "default": "./dist/server/lib/*.js"
     },
     "./cli/*": {
+      "development": "./src/cli/*.ts",
       "types": "./dist/cli/*.d.ts",
       "import": "./dist/cli/*.js",
       "require": "./dist/cli/*.js",
@@ -85,5 +91,6 @@
     "feature-pack",
     "metrics-core"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "sideEffects": false
 }

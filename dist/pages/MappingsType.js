@@ -1,6 +1,8 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from 'react';
-import { AlertDialog, useAlertDialog, useUi } from '@hit/ui-kit';
+import { useUi } from '@hit/ui-kit';
+import { AlertDialog } from '@hit/ui-kit/components/AlertDialog';
+import { useAlertDialog } from '@hit/ui-kit/hooks/useAlertDialog';
 function parseHashEditId() {
     const h = window.location.hash || '';
     const m = h.match(/edit=([^&]+)/);

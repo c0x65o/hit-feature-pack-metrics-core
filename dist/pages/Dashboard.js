@@ -1,7 +1,8 @@
 'use client';
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React from 'react';
-import { Card, Button } from '@hit/ui-kit';
+import { Button } from '@hit/ui-kit/components/Button';
+import { Card } from '@hit/ui-kit/components/Card';
 export function Dashboard() {
     const [defsCount, setDefsCount] = React.useState(null);
     const [dataSourcesCount, setDataSourcesCount] = React.useState(null);
