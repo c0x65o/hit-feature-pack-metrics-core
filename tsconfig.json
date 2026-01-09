@@ -18,7 +18,9 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@/lib/*": ["./src/lib-stubs/*"]
+      "@/lib/db": ["./node_modules/@hit/feature-pack-stubs/dist/db"],
+      "@/lib/hit-config.generated": ["./node_modules/@hit/feature-pack-stubs/dist/hit-config"],
+      "@/lib/feature-pack-schemas": ["./src/lib-stubs/feature-pack-schemas"]
     }
   },
   "include": ["src/**/*"],
