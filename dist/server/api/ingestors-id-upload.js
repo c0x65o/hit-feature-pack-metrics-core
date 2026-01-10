@@ -467,8 +467,16 @@ export async function POST(request, ctx) {
     else {
         return jsonError(`Unsupported ingestor for CSV upload: ${ingestorId}`, 400);
     }
-    // Infer steam app id from parsed data for dimension/ID purposes
-    const steamAppId = inferSteamAppIdFromParsed(parsed) || '';
+    // Infer steam app id from parsed data for dimension/ID purposes.
+    //
+    // IMPORTANT:
+    // `inferSteamAppIdFromParsed()` may return a value that is NOT the actual Steam AppID for the
+    // storefront/project mapping (some Steam exports include other product identifiers).
+    //
+    // When a metrics_links mapping provides steam_app_id metadata, treat it as authoritative for
+    // dimensions + data_source scoping so Projects revenue fallback joins remain stable.
+    const inferredFromParsed = inferSteamAppIdFromParsed(parsed) || '';
+    const steamAppId = steamAppIdHint || inferredFromParsed || '';
     const entityKind = mappedTargetKind;
     const entityId = mappedTargetId;
     const minDate = parsed.minDate;
