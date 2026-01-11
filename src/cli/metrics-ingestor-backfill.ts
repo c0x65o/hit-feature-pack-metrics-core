@@ -64,7 +64,9 @@ function parseArgs(argv: string[]): Args {
     serviceToken,
     dryRun: false,
     validateOnly: false,
-    overwrite: false,
+    // Backfills are intended to be re-runnable and to repair stale/incorrect ingests.
+    // Default to overwrite=true so production can recover without manual DB wipes.
+    overwrite: true,
   };
 
   for (let i = 0; i < argv.length; i++) {

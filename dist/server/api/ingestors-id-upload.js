@@ -411,7 +411,13 @@ export async function POST(request, ctx) {
         .select({ metadata: metricsLinks.metadata, targetKind: metricsLinks.targetKind, targetId: metricsLinks.targetId })
         .from(metricsLinks)
         .where(and(eq(metricsLinks.linkType, linkType), eq(metricsLinks.linkId, mappingLookupKey)))
-        .orderBy(sql `CASE WHEN ${metricsLinks.targetKind} = 'none' THEN 1 ELSE 0 END`, sql `${metricsLinks.updatedAt} DESC`)
+        .orderBy(
+    // Prefer mappings that actually have a target (avoid placeholder "none" rows)
+    sql `CASE WHEN ${metricsLinks.targetKind} = 'none' THEN 1 ELSE 0 END`, 
+    // Prefer field-mapper rows that include steam_app_id (critical for stable revenue joins)
+    sql `CASE WHEN coalesce((${metricsLinks.metadata} ->> 'steam_app_id'), '') = '' THEN 1 ELSE 0 END`, 
+    // Finally, pick the most recently updated mapping.
+    sql `${metricsLinks.updatedAt} DESC`)
         .limit(1);
     const mappedMeta = (linkRow[0]?.metadata || {});
     const mappedTargetKind = typeof linkRow[0]?.targetKind === 'string' ? String(linkRow[0].targetKind).trim() : '';
