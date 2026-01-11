@@ -10,19 +10,12 @@
 -- - CREATE/DROP INDEX CONCURRENTLY cannot run inside a transaction block.
 -- - HIT runners treat files containing `-- HIT: NONTRANSACTIONAL` as non-transactional.
 
+-- IMPORTANT:
+-- This migration must contain EXACTLY ONE CONCURRENTLY statement.
+-- The HIT Node migration runner executes each SQL file via a single query call; multiple
+-- statements in one file would still run "inside a transaction block" and fail.
+
 -- 1) metric_key-only filters / existence checks (fast path for computed metric fallback)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS metrics_metric_points_metric_key_idx
   ON metrics_metric_points (metric_key);
-
--- 2) Windowed queries + stable paging for /api/metrics/points
-CREATE INDEX CONCURRENTLY IF NOT EXISTS metrics_metric_points_metric_key_date_id_idx
-  ON metrics_metric_points (metric_key, date, id);
-
--- 3) If an older metric_key+date index exists from previous maintenance work, drop it (redundant)
-DROP INDEX CONCURRENTLY IF EXISTS metrics_metric_points_metric_key_date_idx;
-
--- 4) Repair/maintenance joins by ingest_batch_id + metric_key
-CREATE INDEX CONCURRENTLY IF NOT EXISTS metrics_metric_points_ingest_batch_metric_key_idx
-  ON metrics_metric_points (ingest_batch_id, metric_key)
-  WHERE ingest_batch_id IS NOT NULL;
 
