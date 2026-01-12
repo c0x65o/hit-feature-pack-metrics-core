@@ -681,7 +681,34 @@ export async function POST(request: NextRequest, ctx: { params: { id: string } }
 
     async function flushChunk() {
     if (valuesChunk.length === 0) return;
-    const chunk = valuesChunk.splice(0, valuesChunk.length);
+
+    // Postgres limitation: within a single INSERT ... ON CONFLICT DO UPDATE statement,
+    // the same conflict target key cannot appear twice, otherwise:
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+    //
+    // This should be rare (our parsers aggregate), but it can happen with certain exports
+    // or if upstream data contains duplicate rows that survive parsing.
+    // Deduplicate within the batch by the actual conflict key.
+    const raw = valuesChunk.splice(0, valuesChunk.length);
+    const deduped = new Map<string, any>();
+    for (const r of raw) {
+      const key = [
+        String(r?.dataSourceId ?? ''),
+        String(r?.metricKey ?? ''),
+        r?.date instanceof Date ? r.date.toISOString() : String(r?.date ?? ''),
+        String(r?.granularity ?? ''),
+        String(r?.dimensionsHash ?? ''),
+      ].join('|');
+      // Prefer the latest row (deterministic; values should match if truly duplicated).
+      deduped.set(key, r);
+    }
+    const chunk = Array.from(deduped.values());
+
+    if (chunk.length !== raw.length) {
+      console.warn(
+        `[metrics-upload] Deduped ${raw.length - chunk.length} duplicate metric_point row(s) within an insert batch for file="${fileName}".`
+      );
+    }
     await db
       .insert(metricsMetricPoints as any)
       .values(chunk)
