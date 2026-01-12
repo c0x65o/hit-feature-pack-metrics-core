@@ -45,6 +45,7 @@ type Args = {
   dryRun: boolean;
   validateOnly: boolean;
   overwrite: boolean;
+  failFast: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -67,6 +68,9 @@ function parseArgs(argv: string[]): Args {
     // Backfills are intended to be re-runnable and to repair stale/incorrect ingests.
     // Default to overwrite=true so production can recover without manual DB wipes.
     overwrite: true,
+    // Default to continuing so a single bad/large file doesn't prevent the rest of the backfill.
+    // The process will still exit non-zero if any upload fails.
+    failFast: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -85,6 +89,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--validate-only') out.validateOnly = true;
     else if (a === '--overwrite') out.overwrite = true;
+    else if (a === '--fail-fast') out.failFast = true;
     else throw new Error(`Unknown arg: ${a}`);
   }
 
@@ -147,7 +152,18 @@ async function fetchWithRetry(
   }
 
   if (lastRes) return { res: lastRes, bodyText: lastBody };
-  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'fetch failed'));
+  const err = lastErr instanceof Error ? lastErr : new Error(String(lastErr || 'fetch failed'));
+  const method = (init?.method || 'GET').toUpperCase();
+  const wrapped = new Error(
+    [
+      `Network error calling ${method} ${url} after ${retries + 1} attempt(s).`,
+      `This usually means the app service restarted (OOM/liveness) or the connection was dropped during a long ingest.`,
+      `Original error: ${err.message}`,
+    ].join('\n'),
+  );
+  // TS-safe "cause" attachment (avoids relying on newer ErrorOptions typings/runtime).
+  (wrapped as any).cause = err;
+  throw wrapped;
 }
 
 function ingestorYamlPath(ingestorId: string) {
@@ -306,6 +322,8 @@ export async function main() {
     return;
   }
 
+  const failures: Array<{ fileName: string; error: string }> = [];
+
   for (const filePath of files) {
     const name = path.basename(filePath);
     const size = fs.statSync(filePath).size;
@@ -314,8 +332,22 @@ export async function main() {
       continue;
     }
     console.log(`Uploading: ${name} (${size} bytes)…`);
-    const result = await uploadOne(args, cfg.id, filePath);
-    console.log(`Result: ${name} -> ${JSON.stringify(result)}`);
+    try {
+      const result = await uploadOne(args, cfg.id, filePath);
+      console.log(`Result: ${name} -> ${JSON.stringify(result)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e || 'Unknown error');
+      failures.push({ fileName: name, error: msg });
+      console.error(`Upload error: ${name}\n${msg}`);
+      if (args.failFast) throw e;
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Backfill completed with ${failures.length} failure(s):\n` +
+        failures.map((f) => `- ${f.fileName}: ${f.error.split('\n')[0]}`).join('\n'),
+    );
   }
 }
 

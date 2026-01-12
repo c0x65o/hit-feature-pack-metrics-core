@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { computeDimensionsHash } from '../lib/dimensions';
 import { getAuthContext } from '../lib/authz';
 import { metricsDataSources, metricsIngestBatches, metricsLinks, metricsMetricPoints } from '@/lib/feature-pack-schemas';
@@ -538,6 +538,30 @@ export async function POST(request, ctx) {
             }
         }
     }
+    // Overwrite should be a true "delete + replace" operation, not just an upsert.
+    //
+    // Why:
+    // - If a prior ingest inferred the wrong steam_app_id (or otherwise changed dimensions),
+    //   the unique key (dimensionsHash) differs, so upsert will NOT replace old rows.
+    // - Worse, this upload path historically included steam_app_id in dataSourceId, so bad inference
+    //   created different dataSourceIds. Upserting into the "correct" dataSourceId can't touch those rows.
+    //
+    // Solution:
+    // - Find prior csv_upload ingest batches for this same file+entity+connector+dateRange
+    // - Delete all metric points for those batches before ingesting the replacement batch.
+    if (overwrite) {
+        const prevBatches = await db
+            .select({
+            id: metricsIngestBatches.id,
+        })
+            .from(metricsIngestBatches)
+            .innerJoin(metricsDataSources, eq(metricsIngestBatches.dataSourceId, metricsDataSources.id))
+            .where(and(eq(metricsIngestBatches.type, 'csv_upload'), eq(metricsIngestBatches.fileName, fileName), eq(metricsIngestBatches.dateRangeStart, minDate), eq(metricsIngestBatches.dateRangeEnd, maxDate), eq(metricsDataSources.entityKind, entityKind), eq(metricsDataSources.entityId, entityId), eq(metricsDataSources.connectorKey, ds.connector_key), eq(metricsDataSources.sourceKind, ds.source_kind)));
+        const prevBatchIds = prevBatches.map((b) => String(b?.id || '')).filter(Boolean);
+        if (prevBatchIds.length > 0) {
+            await db.delete(metricsMetricPoints).where(inArray(metricsMetricPoints.ingestBatchId, prevBatchIds));
+        }
+    }
     const ingestBatchId = `mb_${cryptoRandomId()}`;
     await db.insert(metricsIngestBatches).values({
         id: ingestBatchId,
@@ -560,6 +584,11 @@ export async function POST(request, ctx) {
     for (const entry of parsed.agg.values()) {
         const day = entry.date;
         const dims = { ...(entry.dims || {}) };
+        // Ensure mapped steam_app_id wins for dimensions hashing + reporting.
+        // This prevents Steam product identifiers (or missing columns) from polluting dimensions and breaking revenue joins.
+        if (steamAppIdHint) {
+            dims.steam_app_id = steamAppIdHint;
+        }
         const dimensionsHash = computeDimensionsHash(dims);
         const base = {
             entityKind,
