@@ -9,7 +9,10 @@ import path from 'node:path';
 import * as yaml from 'js-yaml';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-const METRIC_POINT_UPSERT_CHUNK_SIZE = 400;
+// Bigger batches drastically reduce DB round-trips for large Steam exports
+// (some sales CSVs can generate 100k+ metric_point rows after aggregation).
+// Keep under Postgres' 65535 parameter limit (row has ~11 columns).
+const METRIC_POINT_UPSERT_CHUNK_SIZE = 2500;
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
@@ -370,320 +373,342 @@ export async function POST(request, ctx) {
     if (!auth)
         return jsonError('Unauthorized', 401);
     const ingestorId = ctx.params.id;
-    let cfg;
     try {
-        cfg = loadIngestorOrThrow(ingestorId);
-    }
-    catch (e) {
-        return jsonError(e instanceof Error ? e.message : 'Unknown ingestor', 404);
-    }
-    if (!cfg.upload?.enabled)
-        return jsonError(`Upload is disabled for ingestor: ${ingestorId}`, 400);
-    if (!cfg.upload.mapping || cfg.upload.mapping.kind !== 'metrics_links') {
-        return jsonError('Upload mapping must be configured (mapping.kind=metrics_links)', 400);
-    }
-    const mappingKey = (cfg.upload.mapping.key || 'exact_filename');
-    if (mappingKey !== 'exact_filename' && mappingKey !== 'normalize_steam_sales') {
-        return jsonError(`Unsupported upload mapping.key: ${mappingKey}`, 400);
-    }
-    const form = await request.formData().catch(() => null);
-    if (!form)
-        return jsonError('Invalid multipart form data', 400);
-    const f = form.get('file');
-    if (!(f instanceof File))
-        return jsonError('Missing file', 400);
-    const overwrite = String(form.get('overwrite') ?? '').toLowerCase() === 'true';
-    const fileName = f.name || 'upload.csv';
-    const fileSize = Number(f.size || 0);
-    const buf = Buffer.from(await f.arrayBuffer());
-    const content = buf.toString('utf8');
-    const db = getDb();
-    const now = new Date();
-    const linkType = cfg.upload.mapping.link_type;
-    // If mapping.key is "exact_filename", attempt filename -> steam_app_id. If missing, we can still infer from CSV.
-    // If mapping.key is "normalize_steam_sales", normalize common Steam export filename variants before lookup,
-    // and still fall back to CSV inference.
-    let mappingLookupKey = fileName;
-    if (mappingKey === 'normalize_steam_sales') {
-        mappingLookupKey = fileName.replace(/\.csv$/i, '').replace(/ - sales data$/i, '').trim().toLowerCase();
-    }
-    const linkRow = await db
-        .select({ metadata: metricsLinks.metadata, targetKind: metricsLinks.targetKind, targetId: metricsLinks.targetId })
-        .from(metricsLinks)
-        .where(and(eq(metricsLinks.linkType, linkType), eq(metricsLinks.linkId, mappingLookupKey)))
-        .orderBy(
-    // Prefer mappings that actually have a target (avoid placeholder "none" rows)
-    sql `CASE WHEN ${metricsLinks.targetKind} = 'none' THEN 1 ELSE 0 END`, 
-    // Prefer field-mapper rows that include steam_app_id (critical for stable revenue joins)
-    sql `CASE WHEN coalesce((${metricsLinks.metadata} ->> 'steam_app_id'), '') = '' THEN 1 ELSE 0 END`, 
-    // Finally, pick the most recently updated mapping.
-    sql `${metricsLinks.updatedAt} DESC`)
-        .limit(1);
-    const mappedMeta = (linkRow[0]?.metadata || {});
-    const mappedTargetKind = typeof linkRow[0]?.targetKind === 'string' ? String(linkRow[0].targetKind).trim() : '';
-    const mappedTargetId = typeof linkRow[0]?.targetId === 'string' ? String(linkRow[0].targetId).trim() : '';
-    // Parse and aggregate (we use this both for inference and for ingestion).
-    let parsed;
-    // Resolve file -> entity (canonical linkage for file-based ingestion).
-    // This uses metrics_links.target_kind/target_id so the application can map external IDs to any entity in the system.
-    if (!mappedTargetKind || mappedTargetKind === 'none' || !mappedTargetId) {
-        return jsonError(`Missing mapping target for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", target_kind="<entity kind>", target_id="<entity id>".`, 400);
-    }
-    // For Steam wishlist/playerdata ingestors, steam_app_id is required for:
-    // - stable per-app data_source IDs (overlap policy isolation)
-    // - future per-storefront filtering
-    //
-    // We do NOT use steam_app_id as the entity link (entity is always the project),
-    // but we still want it as a dimension.
-    const steamAppIdHint = typeof mappedMeta?.steam_app_id === 'string'
-        ? mappedMeta.steam_app_id.trim()
-        : typeof mappedMeta?.steamAppId === 'string'
-            ? mappedMeta.steamAppId.trim()
-            : '';
-    const inferredSteamAppIdForDims = steamAppIdHint || '';
-    if (ingestorId === 'steam-sales') {
+        let cfg;
         try {
-            // IMPORTANT:
-            // Some Steam "Sales Data" exports (notably certain in-game sales formats) do not include Product(ID),
-            // which would otherwise cause steam_app_id to become "unknown" and break the Projects revenue
-            // steam_app_id fallback join. Use the mapped steam_app_id (from metrics_links.metadata) as a
-            // fallback so dimensions stay stable across formats.
-            parsed = parseSteamDailySales(content, inferredSteamAppIdForDims);
+            cfg = loadIngestorOrThrow(ingestorId);
         }
         catch (e) {
-            return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
+            return jsonError(e instanceof Error ? e.message : 'Unknown ingestor', 404);
         }
-    }
-    else if (ingestorId === 'steam-wishlist') {
-        try {
-            parsed = parseSteamDailyWishlist(content, inferredSteamAppIdForDims);
+        if (!cfg.upload?.enabled)
+            return jsonError(`Upload is disabled for ingestor: ${ingestorId}`, 400);
+        if (!cfg.upload.mapping || cfg.upload.mapping.kind !== 'metrics_links') {
+            return jsonError('Upload mapping must be configured (mapping.kind=metrics_links)', 400);
         }
-        catch (e) {
-            return jsonError(e instanceof Error ? e.message : 'Failed to parse wishlist CSV', 400);
+        const mappingKey = (cfg.upload.mapping.key || 'exact_filename');
+        if (mappingKey !== 'exact_filename' && mappingKey !== 'normalize_steam_sales') {
+            return jsonError(`Unsupported upload mapping.key: ${mappingKey}`, 400);
         }
-    }
-    else if (ingestorId === 'steam-playerdata') {
-        try {
-            parsed = parseSteamDailyPlayerData(content, inferredSteamAppIdForDims);
+        const form = await request.formData().catch(() => null);
+        if (!form)
+            return jsonError('Invalid multipart form data', 400);
+        const f = form.get('file');
+        if (!(f instanceof File))
+            return jsonError('Missing file', 400);
+        const overwrite = String(form.get('overwrite') ?? '').toLowerCase() === 'true';
+        const fileName = f.name || 'upload.csv';
+        const fileSize = Number(f.size || 0);
+        const buf = Buffer.from(await f.arrayBuffer());
+        const content = buf.toString('utf8');
+        const db = getDb();
+        const now = new Date();
+        const linkType = cfg.upload.mapping.link_type;
+        // If mapping.key is "exact_filename", attempt filename -> steam_app_id. If missing, we can still infer from CSV.
+        // If mapping.key is "normalize_steam_sales", normalize common Steam export filename variants before lookup,
+        // and still fall back to CSV inference.
+        let mappingLookupKey = fileName;
+        if (mappingKey === 'normalize_steam_sales') {
+            mappingLookupKey = fileName.replace(/\.csv$/i, '').replace(/ - sales data$/i, '').trim().toLowerCase();
         }
-        catch (e) {
-            return jsonError(e instanceof Error ? e.message : 'Failed to parse player data CSV', 400);
-        }
-    }
-    else {
-        return jsonError(`Unsupported ingestor for CSV upload: ${ingestorId}`, 400);
-    }
-    // Infer steam app id from parsed data for dimension/ID purposes.
-    //
-    // IMPORTANT:
-    // `inferSteamAppIdFromParsed()` may return a value that is NOT the actual Steam AppID for the
-    // storefront/project mapping (some Steam exports include other product identifiers).
-    //
-    // When a metrics_links mapping provides steam_app_id metadata, treat it as authoritative for
-    // dimensions + data_source scoping so Projects revenue fallback joins remain stable.
-    const inferredFromParsed = inferSteamAppIdFromParsed(parsed) || '';
-    const steamAppId = steamAppIdHint || inferredFromParsed || '';
-    const entityKind = mappedTargetKind;
-    const entityId = mappedTargetId;
-    const minDate = parsed.minDate;
-    const maxDate = parsed.maxDate;
-    if (!minDate || !maxDate)
-        return jsonError('No valid daily rows found in CSV', 400);
-    function safeIdPart(s, maxLen = 64) {
-        return String(s || '')
-            .trim()
-            .replace(/[^a-zA-Z0-9]+/g, '_')
-            .replace(/^_+|_+$/g, '')
-            .slice(0, maxLen);
-    }
-    // Ensure data source exists (orchestrated).
-    const ds = cfg.data_source;
-    const scope = cfg.scope;
-    // IMPORTANT:
-    // For file ingestors, we should not use a single global data_source.id for all entities,
-    // otherwise overlap policy collides across different entities/files.
-    const dsId = `${ds.id}_${safeIdPart(entityKind, 16)}_${safeIdPart(entityId, 48)}_${safeIdPart(steamAppId, 24)}`;
-    await db
-        .insert(metricsDataSources)
-        .values({
-        id: dsId,
-        entityKind,
-        entityId,
-        connectorKey: ds.connector_key,
-        sourceKind: ds.source_kind,
-        externalRef: ds.external_ref ?? null,
-        enabled: true,
-        createdAt: now,
-        updatedAt: now,
-    })
-        .onConflictDoUpdate({
-        target: metricsDataSources.id,
-        set: { updatedAt: now },
-    });
-    // Overlap policy: keep best for exact date range (prefer larger file size)
-    if (cfg.upload.overlap_policy?.kind === 'keep_best_for_exact_date_range' && cfg.upload.overlap_policy.prefer === 'larger_file_size') {
-        const existing = await db
-            .select({
-            id: metricsIngestBatches.id,
-            fileSize: metricsIngestBatches.fileSize,
-        })
-            .from(metricsIngestBatches)
-            .where(and(eq(metricsIngestBatches.dataSourceId, dsId), eq(metricsIngestBatches.type, 'csv_upload'), eq(metricsIngestBatches.dateRangeStart, minDate), eq(metricsIngestBatches.dateRangeEnd, maxDate)))
+        const linkRow = await db
+            .select({ metadata: metricsLinks.metadata, targetKind: metricsLinks.targetKind, targetId: metricsLinks.targetId })
+            .from(metricsLinks)
+            .where(and(eq(metricsLinks.linkType, linkType), eq(metricsLinks.linkId, mappingLookupKey)))
+            .orderBy(
+        // Prefer mappings that actually have a target (avoid placeholder "none" rows)
+        sql `CASE WHEN ${metricsLinks.targetKind} = 'none' THEN 1 ELSE 0 END`, 
+        // Prefer field-mapper rows that include steam_app_id (critical for stable revenue joins)
+        sql `CASE WHEN coalesce((${metricsLinks.metadata} ->> 'steam_app_id'), '') = '' THEN 1 ELSE 0 END`, 
+        // Finally, pick the most recently updated mapping.
+        sql `${metricsLinks.updatedAt} DESC`)
             .limit(1);
-        const prev = existing[0];
-        if (prev && !overwrite) {
-            const prevSize = Number(prev.fileSize || 0);
-            if (prevSize >= fileSize) {
-                return jsonError(`A batch already exists for this exact date range (${minDate.toISOString().slice(0, 10)} → ${maxDate.toISOString().slice(0, 10)}). Existing file is larger/equal (${prevSize} bytes) so this upload is skipped. Check "overwrite" to force.`, 409);
+        const mappedMeta = (linkRow[0]?.metadata || {});
+        const mappedTargetKind = typeof linkRow[0]?.targetKind === 'string' ? String(linkRow[0].targetKind).trim() : '';
+        const mappedTargetId = typeof linkRow[0]?.targetId === 'string' ? String(linkRow[0].targetId).trim() : '';
+        // Parse and aggregate (we use this both for inference and for ingestion).
+        let parsed;
+        // Resolve file -> entity (canonical linkage for file-based ingestion).
+        // This uses metrics_links.target_kind/target_id so the application can map external IDs to any entity in the system.
+        if (!mappedTargetKind || mappedTargetKind === 'none' || !mappedTargetId) {
+            return jsonError(`Missing mapping target for upload "${fileName}". Add a metrics_links row: link_type="${linkType}", link_id="${mappingLookupKey}", target_kind="<entity kind>", target_id="<entity id>".`, 400);
+        }
+        // For Steam wishlist/playerdata ingestors, steam_app_id is required for:
+        // - stable per-app data_source IDs (overlap policy isolation)
+        // - future per-storefront filtering
+        //
+        // We do NOT use steam_app_id as the entity link (entity is always the project),
+        // but we still want it as a dimension.
+        const steamAppIdHint = typeof mappedMeta?.steam_app_id === 'string'
+            ? mappedMeta.steam_app_id.trim()
+            : typeof mappedMeta?.steamAppId === 'string'
+                ? mappedMeta.steamAppId.trim()
+                : '';
+        const inferredSteamAppIdForDims = steamAppIdHint || '';
+        if (ingestorId === 'steam-sales') {
+            try {
+                // IMPORTANT:
+                // Some Steam "Sales Data" exports (notably certain in-game sales formats) do not include Product(ID),
+                // which would otherwise cause steam_app_id to become "unknown" and break the Projects revenue
+                // steam_app_id fallback join. Use the mapped steam_app_id (from metrics_links.metadata) as a
+                // fallback so dimensions stay stable across formats.
+                parsed = parseSteamDailySales(content, inferredSteamAppIdForDims);
+            }
+            catch (e) {
+                return jsonError(e instanceof Error ? e.message : 'Failed to parse CSV', 400);
             }
         }
-    }
-    // Overwrite should be a true "delete + replace" operation, not just an upsert.
-    //
-    // Why:
-    // - If a prior ingest inferred the wrong steam_app_id (or otherwise changed dimensions),
-    //   the unique key (dimensionsHash) differs, so upsert will NOT replace old rows.
-    // - Worse, this upload path historically included steam_app_id in dataSourceId, so bad inference
-    //   created different dataSourceIds. Upserting into the "correct" dataSourceId can't touch those rows.
-    //
-    // Solution:
-    // - Find prior csv_upload ingest batches for this same file+entity+connector+dateRange
-    // - Delete all metric points for those batches before ingesting the replacement batch.
-    if (overwrite) {
-        const prevBatches = await db
-            .select({
-            id: metricsIngestBatches.id,
-        })
-            .from(metricsIngestBatches)
-            .innerJoin(metricsDataSources, eq(metricsIngestBatches.dataSourceId, metricsDataSources.id))
-            .where(and(eq(metricsIngestBatches.type, 'csv_upload'), eq(metricsIngestBatches.fileName, fileName), eq(metricsIngestBatches.dateRangeStart, minDate), eq(metricsIngestBatches.dateRangeEnd, maxDate), eq(metricsDataSources.entityKind, entityKind), eq(metricsDataSources.entityId, entityId), eq(metricsDataSources.connectorKey, ds.connector_key), eq(metricsDataSources.sourceKind, ds.source_kind)));
-        const prevBatchIds = prevBatches.map((b) => String(b?.id || '')).filter(Boolean);
-        if (prevBatchIds.length > 0) {
-            await db.delete(metricsMetricPoints).where(inArray(metricsMetricPoints.ingestBatchId, prevBatchIds));
+        else if (ingestorId === 'steam-wishlist') {
+            try {
+                parsed = parseSteamDailyWishlist(content, inferredSteamAppIdForDims);
+            }
+            catch (e) {
+                return jsonError(e instanceof Error ? e.message : 'Failed to parse wishlist CSV', 400);
+            }
         }
-    }
-    const ingestBatchId = `mb_${cryptoRandomId()}`;
-    await db.insert(metricsIngestBatches).values({
-        id: ingestBatchId,
-        dataSourceId: dsId,
-        type: 'csv_upload',
-        fileName,
-        fileSize: String(fileSize),
-        status: 'success',
-        dateRangeStart: minDate,
-        dateRangeEnd: maxDate,
-        processedAt: now,
-        createdAt: now,
-        updatedAt: now,
-    });
-    // Build points list and upsert in chunks.
-    const values = [];
-    const wishlistNetByDay = new Map();
-    let wishlistBaseDimensionsHash = null;
-    let wishlistBaseDimensions = null;
-    for (const entry of parsed.agg.values()) {
-        const day = entry.date;
-        const dims = { ...(entry.dims || {}) };
-        // Ensure mapped steam_app_id wins for dimensions hashing + reporting.
-        // This prevents Steam product identifiers (or missing columns) from polluting dimensions and breaking revenue joins.
-        if (steamAppIdHint) {
-            dims.steam_app_id = steamAppIdHint;
+        else if (ingestorId === 'steam-playerdata') {
+            try {
+                parsed = parseSteamDailyPlayerData(content, inferredSteamAppIdForDims);
+            }
+            catch (e) {
+                return jsonError(e instanceof Error ? e.message : 'Failed to parse player data CSV', 400);
+            }
         }
-        const dimensionsHash = computeDimensionsHash(dims);
-        const base = {
+        else {
+            return jsonError(`Unsupported ingestor for CSV upload: ${ingestorId}`, 400);
+        }
+        // Infer steam app id from parsed data for dimension/ID purposes.
+        //
+        // IMPORTANT:
+        // `inferSteamAppIdFromParsed()` may return a value that is NOT the actual Steam AppID for the
+        // storefront/project mapping (some Steam exports include other product identifiers).
+        //
+        // When a metrics_links mapping provides steam_app_id metadata, treat it as authoritative for
+        // dimensions + data_source scoping so Projects revenue fallback joins remain stable.
+        const inferredFromParsed = inferSteamAppIdFromParsed(parsed) || '';
+        const steamAppId = steamAppIdHint || inferredFromParsed || '';
+        const entityKind = mappedTargetKind;
+        const entityId = mappedTargetId;
+        const minDate = parsed.minDate;
+        const maxDate = parsed.maxDate;
+        if (!minDate || !maxDate)
+            return jsonError('No valid daily rows found in CSV', 400);
+        function safeIdPart(s, maxLen = 64) {
+            return String(s || '')
+                .trim()
+                .replace(/[^a-zA-Z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .slice(0, maxLen);
+        }
+        // Ensure data source exists (orchestrated).
+        const ds = cfg.data_source;
+        const scope = cfg.scope;
+        // IMPORTANT:
+        // For file ingestors, we should not use a single global data_source.id for all entities,
+        // otherwise overlap policy collides across different entities/files.
+        const dsId = `${ds.id}_${safeIdPart(entityKind, 16)}_${safeIdPart(entityId, 48)}_${safeIdPart(steamAppId, 24)}`;
+        await db
+            .insert(metricsDataSources)
+            .values({
+            id: dsId,
             entityKind,
             entityId,
-            dataSourceId: dsId,
-            date: day,
-            granularity: 'daily',
-            dimensions: dims,
-            dimensionsHash,
-            ingestBatchId,
+            connectorKey: ds.connector_key,
+            sourceKind: ds.source_kind,
+            externalRef: ds.external_ref ?? null,
+            enabled: true,
             createdAt: now,
             updatedAt: now,
-        };
-        for (const [metricKey, value] of Object.entries(entry.sums)) {
-            // Keep everything (including zeros) for deterministic upserts; can be filtered later.
-            values.push({
-                ...base,
-                id: `mp_${cryptoRandomId()}`,
-                metricKey,
-                value: String(value),
+        })
+            .onConflictDoUpdate({
+            target: metricsDataSources.id,
+            set: { updatedAt: now },
+        });
+        // Overlap policy: keep best for exact date range (prefer larger file size)
+        if (cfg.upload.overlap_policy?.kind === 'keep_best_for_exact_date_range' && cfg.upload.overlap_policy.prefer === 'larger_file_size') {
+            const existing = await db
+                .select({
+                id: metricsIngestBatches.id,
+                fileSize: metricsIngestBatches.fileSize,
+            })
+                .from(metricsIngestBatches)
+                .where(and(eq(metricsIngestBatches.dataSourceId, dsId), eq(metricsIngestBatches.type, 'csv_upload'), eq(metricsIngestBatches.dateRangeStart, minDate), eq(metricsIngestBatches.dateRangeEnd, maxDate)))
+                .limit(1);
+            const prev = existing[0];
+            if (prev && !overwrite) {
+                const prevSize = Number(prev.fileSize || 0);
+                if (prevSize >= fileSize) {
+                    return jsonError(`A batch already exists for this exact date range (${minDate.toISOString().slice(0, 10)} → ${maxDate.toISOString().slice(0, 10)}). Existing file is larger/equal (${prevSize} bytes) so this upload is skipped. Check "overwrite" to force.`, 409);
+                }
+            }
+        }
+        // Overwrite should be a true "delete + replace" operation, not just an upsert.
+        //
+        // Why:
+        // - If a prior ingest inferred the wrong steam_app_id (or otherwise changed dimensions),
+        //   the unique key (dimensionsHash) differs, so upsert will NOT replace old rows.
+        // - Worse, this upload path historically included steam_app_id in dataSourceId, so bad inference
+        //   created different dataSourceIds. Upserting into the "correct" dataSourceId can't touch those rows.
+        //
+        // Solution:
+        // - Find prior csv_upload ingest batches for this same file+entity+connector+dateRange
+        // - Delete all metric points for those batches before ingesting the replacement batch.
+        if (overwrite) {
+            const prevBatches = await db
+                .select({
+                id: metricsIngestBatches.id,
+            })
+                .from(metricsIngestBatches)
+                .innerJoin(metricsDataSources, eq(metricsIngestBatches.dataSourceId, metricsDataSources.id))
+                .where(and(eq(metricsIngestBatches.type, 'csv_upload'), eq(metricsIngestBatches.fileName, fileName), eq(metricsIngestBatches.dateRangeStart, minDate), eq(metricsIngestBatches.dateRangeEnd, maxDate), eq(metricsDataSources.entityKind, entityKind), eq(metricsDataSources.entityId, entityId), eq(metricsDataSources.connectorKey, ds.connector_key), eq(metricsDataSources.sourceKind, ds.source_kind)));
+            const prevBatchIds = prevBatches.map((b) => String(b?.id || '')).filter(Boolean);
+            if (prevBatchIds.length > 0) {
+                await db.delete(metricsMetricPoints).where(inArray(metricsMetricPoints.ingestBatchId, prevBatchIds));
+            }
+        }
+        const ingestBatchId = `mb_${cryptoRandomId()}`;
+        await db.insert(metricsIngestBatches).values({
+            id: ingestBatchId,
+            dataSourceId: dsId,
+            type: 'csv_upload',
+            fileName,
+            fileSize: String(fileSize),
+            status: 'success',
+            dateRangeStart: minDate,
+            dateRangeEnd: maxDate,
+            processedAt: now,
+            createdAt: now,
+            updatedAt: now,
+        });
+        // Build points and upsert in chunks.
+        //
+        // IMPORTANT: do NOT build a giant `values[]` list for large files; that can spike memory
+        // and (more importantly) makes ingestion slower, which can trigger pod liveness/OOM kills.
+        const valuesChunk = [];
+        const wishlistNetByDay = new Map();
+        let wishlistBaseDimensionsHash = null;
+        let wishlistBaseDimensions = null;
+        async function flushChunk() {
+            if (valuesChunk.length === 0)
+                return;
+            const chunk = valuesChunk.splice(0, valuesChunk.length);
+            await db
+                .insert(metricsMetricPoints)
+                .values(chunk)
+                .onConflictDoUpdate({
+                target: [
+                    metricsMetricPoints.dataSourceId,
+                    metricsMetricPoints.metricKey,
+                    metricsMetricPoints.date,
+                    metricsMetricPoints.granularity,
+                    metricsMetricPoints.dimensionsHash,
+                ],
+                set: {
+                    value: sql `excluded.value`,
+                    ingestBatchId: sql `excluded.ingest_batch_id`,
+                    updatedAt: now,
+                },
             });
         }
-        if (ingestorId === 'steam-wishlist') {
-            const dayKey = day.toISOString().slice(0, 10);
-            const net = Number(entry.sums?.wishlist_net_change ?? 0);
-            wishlistNetByDay.set(dayKey, Number.isFinite(net) ? net : 0);
-            wishlistBaseDimensionsHash = dimensionsHash;
-            wishlistBaseDimensions = dims;
-        }
-    }
-    // Derived metric: wishlist_cumulative_total.
-    // Compute it in the upload handler so it stays consistent across multiple uploads/backfills.
-    if (ingestorId === 'steam-wishlist' && wishlistNetByDay.size > 0 && wishlistBaseDimensionsHash && wishlistBaseDimensions) {
-        const rows = await db
-            .select({
-            s: sql `COALESCE(SUM(CAST(${metricsMetricPoints.value} AS NUMERIC)), 0)`.as('s'),
-        })
-            .from(metricsMetricPoints)
-            .where(and(eq(metricsMetricPoints.dataSourceId, dsId), eq(metricsMetricPoints.entityKind, entityKind), eq(metricsMetricPoints.entityId, entityId), eq(metricsMetricPoints.metricKey, 'wishlist_net_change'), sql `${metricsMetricPoints.date} < ${minDate}`, eq(metricsMetricPoints.dimensionsHash, wishlistBaseDimensionsHash)))
-            .limit(1);
-        const base = Number(rows?.[0]?.s ?? 0);
-        let running = Number.isFinite(base) ? base : 0;
-        const days = Array.from(wishlistNetByDay.keys()).sort();
-        for (const day of days) {
-            running += wishlistNetByDay.get(day) || 0;
-            const dt = new Date(`${day}T00:00:00.000Z`);
-            values.push({
-                id: `mp_${cryptoRandomId()}`,
+        let pointsUpserted = 0;
+        for (const entry of parsed.agg.values()) {
+            const day = entry.date;
+            const dims = { ...(entry.dims || {}) };
+            // Ensure mapped steam_app_id wins for dimensions hashing + reporting.
+            // This prevents Steam product identifiers (or missing columns) from polluting dimensions and breaking revenue joins.
+            if (steamAppIdHint) {
+                dims.steam_app_id = steamAppIdHint;
+            }
+            const dimensionsHash = computeDimensionsHash(dims);
+            const base = {
                 entityKind,
                 entityId,
                 dataSourceId: dsId,
-                date: dt,
+                date: day,
                 granularity: 'daily',
-                dimensions: wishlistBaseDimensions,
-                dimensionsHash: wishlistBaseDimensionsHash,
+                dimensions: dims,
+                dimensionsHash,
                 ingestBatchId,
                 createdAt: now,
                 updatedAt: now,
-                metricKey: 'wishlist_cumulative_total',
-                value: String(running),
-            });
+            };
+            for (const [metricKey, value] of Object.entries(entry.sums)) {
+                // Keep everything (including zeros) for deterministic upserts; can be filtered later.
+                valuesChunk.push({
+                    ...base,
+                    id: `mp_${cryptoRandomId()}`,
+                    metricKey,
+                    value: String(value),
+                });
+                pointsUpserted++;
+                if (valuesChunk.length >= METRIC_POINT_UPSERT_CHUNK_SIZE) {
+                    await flushChunk();
+                }
+            }
+            if (ingestorId === 'steam-wishlist') {
+                const dayKey = day.toISOString().slice(0, 10);
+                const net = Number(entry.sums?.wishlist_net_change ?? 0);
+                wishlistNetByDay.set(dayKey, Number.isFinite(net) ? net : 0);
+                wishlistBaseDimensionsHash = dimensionsHash;
+                wishlistBaseDimensions = dims;
+            }
         }
-    }
-    for (let i = 0; i < values.length; i += METRIC_POINT_UPSERT_CHUNK_SIZE) {
-        const chunk = values.slice(i, i + METRIC_POINT_UPSERT_CHUNK_SIZE);
-        await db
-            .insert(metricsMetricPoints)
-            .values(chunk)
-            .onConflictDoUpdate({
-            target: [
-                metricsMetricPoints.dataSourceId,
-                metricsMetricPoints.metricKey,
-                metricsMetricPoints.date,
-                metricsMetricPoints.granularity,
-                metricsMetricPoints.dimensionsHash,
-            ],
-            set: {
-                value: sql `excluded.value`,
-                ingestBatchId: sql `excluded.ingest_batch_id`,
-                updatedAt: now,
+        // Derived metric: wishlist_cumulative_total.
+        // Compute it in the upload handler so it stays consistent across multiple uploads/backfills.
+        if (ingestorId === 'steam-wishlist' && wishlistNetByDay.size > 0 && wishlistBaseDimensionsHash && wishlistBaseDimensions) {
+            const rows = await db
+                .select({
+                s: sql `COALESCE(SUM(CAST(${metricsMetricPoints.value} AS NUMERIC)), 0)`.as('s'),
+            })
+                .from(metricsMetricPoints)
+                .where(and(eq(metricsMetricPoints.dataSourceId, dsId), eq(metricsMetricPoints.entityKind, entityKind), eq(metricsMetricPoints.entityId, entityId), eq(metricsMetricPoints.metricKey, 'wishlist_net_change'), sql `${metricsMetricPoints.date} < ${minDate}`, eq(metricsMetricPoints.dimensionsHash, wishlistBaseDimensionsHash)))
+                .limit(1);
+            const base = Number(rows?.[0]?.s ?? 0);
+            let running = Number.isFinite(base) ? base : 0;
+            const days = Array.from(wishlistNetByDay.keys()).sort();
+            for (const day of days) {
+                running += wishlistNetByDay.get(day) || 0;
+                const dt = new Date(`${day}T00:00:00.000Z`);
+                valuesChunk.push({
+                    id: `mp_${cryptoRandomId()}`,
+                    entityKind,
+                    entityId,
+                    dataSourceId: dsId,
+                    date: dt,
+                    granularity: 'daily',
+                    dimensions: wishlistBaseDimensions,
+                    dimensionsHash: wishlistBaseDimensionsHash,
+                    ingestBatchId,
+                    createdAt: now,
+                    updatedAt: now,
+                    metricKey: 'wishlist_cumulative_total',
+                    value: String(running),
+                });
+                pointsUpserted++;
+                if (valuesChunk.length >= METRIC_POINT_UPSERT_CHUNK_SIZE) {
+                    await flushChunk();
+                }
+            }
+        }
+        await flushChunk();
+        return NextResponse.json({
+            ok: true,
+            ingestorId,
+            fileName,
+            fileSize,
+            resolved: {
+                steamAppId: steamAppId,
+                targetKind: entityKind,
+                targetId: entityId,
             },
+            dateRange: { start: minDate.toISOString().slice(0, 10), end: maxDate.toISOString().slice(0, 10) },
+            pointsUpserted,
+            ingestBatchId,
         });
     }
-    return NextResponse.json({
-        ok: true,
-        ingestorId,
-        fileName,
-        fileSize,
-        resolved: {
-            steamAppId: steamAppId,
-            targetKind: entityKind,
-            targetId: entityId,
-        },
-        dateRange: { start: minDate.toISOString().slice(0, 10), end: maxDate.toISOString().slice(0, 10) },
-        pointsUpserted: values.length,
-        ingestBatchId,
-    });
+    catch (e) {
+        // Avoid bubbling to the dispatcher generic 500 so callers see a usable error message.
+        const msg = e instanceof Error ? e.message : String(e || 'Internal server error');
+        return NextResponse.json({ error: msg }, { status: 500 });
+    }
 }

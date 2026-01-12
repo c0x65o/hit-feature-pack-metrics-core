@@ -267,12 +267,32 @@ async function uploadOne(args: Args, ingestorId: string, filePath: string) {
     { retries: 20, baseDelayMs: 400 },
   );
   if (!res.ok) {
+    // Try to surface correlationId / structured error details for easier debugging in production.
+    const parsed = (() => {
+      try {
+        return JSON.parse(text) as any;
+      } catch {
+        return null;
+      }
+    })();
+    const correlationId =
+      typeof parsed?.correlationId === 'string' && parsed.correlationId ? parsed.correlationId : '';
+    const errMsg =
+      typeof parsed?.error === 'string' && parsed.error ? parsed.error : '';
+
     // Treat overlap-policy skips as non-fatal so backfills can be re-run safely.
     // The API returns 409 with a human-readable "skipped" message.
     if (res.status === 409 && !args.overwrite) {
       return { skipped: true, status: 409, fileName: name, message: text };
     }
-    throw new Error(`Upload failed for "${name}" (${res.status}): ${text}`);
+    throw new Error(
+      [
+        `Upload failed for "${name}" (${res.status}).`,
+        correlationId ? `correlationId=${correlationId}` : '',
+        errMsg ? `error=${errMsg}` : '',
+        !parsed ? `body=${text}` : '',
+      ].filter(Boolean).join(' '),
+    );
   }
 
   try {
