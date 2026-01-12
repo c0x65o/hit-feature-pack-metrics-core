@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { metricsLinks } from '@/lib/feature-pack-schemas';
 import { eq } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,7 +14,21 @@ function jsonError(message: string, status = 400) {
 
 export async function PUT(request: NextRequest, ctx: { params: { id: string } }) {
   const auth = getAuthContext(request);
-  if (!auth) return jsonError('Unauthorized', 401);
+  if (!auth || auth.kind !== 'user') return jsonError('Unauthorized', 401);
+
+  // Resolve scope mode for write access
+  const mode = await resolveMetricsCoreScopeMode(request, { verb: 'write', entity: 'mappings' });
+
+  // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+  if (mode === 'none') {
+    return jsonError('Forbidden', 403);
+  } else if (mode === 'own' || mode === 'ldd') {
+    // Metrics-core doesn't have ownership or LDD fields, so deny access
+    return jsonError('Forbidden', 403);
+  } else if (mode !== 'any') {
+    // Fallback: deny access
+    return jsonError('Forbidden', 403);
+  }
 
   const id = ctx.params.id;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -36,7 +51,21 @@ export async function PUT(request: NextRequest, ctx: { params: { id: string } })
 
 export async function DELETE(request: NextRequest, ctx: { params: { id: string } }) {
   const auth = getAuthContext(request);
-  if (!auth) return jsonError('Unauthorized', 401);
+  if (!auth || auth.kind !== 'user') return jsonError('Unauthorized', 401);
+
+  // Resolve scope mode for delete access
+  const mode = await resolveMetricsCoreScopeMode(request, { verb: 'delete', entity: 'mappings' });
+
+  // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+  if (mode === 'none') {
+    return jsonError('Forbidden', 403);
+  } else if (mode === 'own' || mode === 'ldd') {
+    // Metrics-core doesn't have ownership or LDD fields, so deny access
+    return jsonError('Forbidden', 403);
+  } else if (mode !== 'any') {
+    // Fallback: deny access
+    return jsonError('Forbidden', 403);
+  }
 
   const id = ctx.params.id;
   const db = getDb();

@@ -4,6 +4,7 @@ import { metricsPartnerCredentials } from '@/lib/feature-pack-schemas';
 import { and, eq } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 import { loadPartnerDefinitions } from '../lib/partners';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
@@ -63,8 +64,22 @@ function validateRequired(fields, creds) {
 }
 export async function GET(request, ctx) {
     const auth = getAuthContext(request);
-    if (!auth)
+    if (!auth || auth.kind !== 'user')
         return jsonError('Unauthorized', 401);
+    // Resolve scope mode for read access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'integrations' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Not found', 404);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Not found', 404);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Not found', 404);
+    }
     const id = ctx.params.id;
     let def;
     try {
@@ -92,8 +107,22 @@ export async function GET(request, ctx) {
 }
 export async function PUT(request, ctx) {
     const auth = getAuthContext(request);
-    if (!auth)
+    if (!auth || auth.kind !== 'user')
         return jsonError('Unauthorized', 401);
+    // Resolve scope mode for write access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'write', entity: 'integrations' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Forbidden', 403);
+    }
     const id = ctx.params.id;
     let def;
     try {
@@ -136,8 +165,22 @@ export async function PUT(request, ctx) {
 }
 export async function DELETE(request, ctx) {
     const auth = getAuthContext(request);
-    if (!auth)
+    if (!auth || auth.kind !== 'user')
         return jsonError('Unauthorized', 401);
+    // Resolve scope mode for delete access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'delete', entity: 'integrations' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Forbidden', 403);
+    }
     const id = ctx.params.id;
     const db = getDb();
     await db.delete(metricsPartnerCredentials).where(eq(metricsPartnerCredentials.id, id));

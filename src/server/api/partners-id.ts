@@ -4,6 +4,7 @@ import { metricsPartnerCredentials } from '@/lib/feature-pack-schemas';
 import { and, eq } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 import { loadPartnerDefinitions, type PartnerDefinition, type PartnerFieldDefinition } from '../lib/partners';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -61,7 +62,21 @@ function validateRequired(fields: PartnerFieldDefinition[], creds: Record<string
 
 export async function GET(request: NextRequest, ctx: { params: { id: string } }) {
   const auth = getAuthContext(request);
-  if (!auth) return jsonError('Unauthorized', 401);
+  if (!auth || auth.kind !== 'user') return jsonError('Unauthorized', 401);
+
+  // Resolve scope mode for read access
+  const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'integrations' });
+
+  // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+  if (mode === 'none') {
+    return jsonError('Not found', 404);
+  } else if (mode === 'own' || mode === 'ldd') {
+    // Metrics-core doesn't have ownership or LDD fields, so deny access
+    return jsonError('Not found', 404);
+  } else if (mode !== 'any') {
+    // Fallback: deny access
+    return jsonError('Not found', 404);
+  }
 
   const id = ctx.params.id;
   let def: PartnerDefinition;
@@ -92,7 +107,21 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
 
 export async function PUT(request: NextRequest, ctx: { params: { id: string } }) {
   const auth = getAuthContext(request);
-  if (!auth) return jsonError('Unauthorized', 401);
+  if (!auth || auth.kind !== 'user') return jsonError('Unauthorized', 401);
+
+  // Resolve scope mode for write access
+  const mode = await resolveMetricsCoreScopeMode(request, { verb: 'write', entity: 'integrations' });
+
+  // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+  if (mode === 'none') {
+    return jsonError('Forbidden', 403);
+  } else if (mode === 'own' || mode === 'ldd') {
+    // Metrics-core doesn't have ownership or LDD fields, so deny access
+    return jsonError('Forbidden', 403);
+  } else if (mode !== 'any') {
+    // Fallback: deny access
+    return jsonError('Forbidden', 403);
+  }
 
   const id = ctx.params.id;
   let def: PartnerDefinition;
@@ -138,7 +167,21 @@ export async function PUT(request: NextRequest, ctx: { params: { id: string } })
 
 export async function DELETE(request: NextRequest, ctx: { params: { id: string } }) {
   const auth = getAuthContext(request);
-  if (!auth) return jsonError('Unauthorized', 401);
+  if (!auth || auth.kind !== 'user') return jsonError('Unauthorized', 401);
+
+  // Resolve scope mode for delete access
+  const mode = await resolveMetricsCoreScopeMode(request, { verb: 'delete', entity: 'integrations' });
+
+  // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+  if (mode === 'none') {
+    return jsonError('Forbidden', 403);
+  } else if (mode === 'own' || mode === 'ldd') {
+    // Metrics-core doesn't have ownership or LDD fields, so deny access
+    return jsonError('Forbidden', 403);
+  } else if (mode !== 'any') {
+    // Fallback: deny access
+    return jsonError('Forbidden', 403);
+  }
 
   const id = ctx.params.id;
   const db = getDb();

@@ -3,20 +3,61 @@ import { getDb } from '@/lib/db';
 import { metricsMetricDefinitions } from '@/lib/feature-pack-schemas';
 import { eq } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
+import { requireMetricsCoreAction } from '../lib/require-action';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
-export async function GET() {
+export async function GET(request) {
+    const auth = getAuthContext(request);
+    if (!auth || auth.kind !== 'user')
+        return jsonError('Unauthorized', 401);
+    // Resolve scope mode for read access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'definitions' });
     const db = getDb();
-    const defs = await db.select().from(metricsMetricDefinitions);
-    return NextResponse.json({ data: defs });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        // Explicit deny: return empty results (fail-closed but non-breaking for list UI)
+        return NextResponse.json({ data: [] });
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return NextResponse.json({ data: [] });
+    }
+    else if (mode === 'any') {
+        // Allow access: return all definitions
+        const defs = await db.select().from(metricsMetricDefinitions);
+        return NextResponse.json({ data: defs });
+    }
+    else {
+        // Fallback: deny access
+        return NextResponse.json({ data: [] });
+    }
 }
 export async function POST(request) {
     const auth = getAuthContext(request);
-    if (!auth)
+    if (!auth || auth.kind !== 'user')
         return jsonError('Unauthorized', 401);
+    // Check create permission
+    const createCheck = await requireMetricsCoreAction(request, 'metrics-core.definitions.create');
+    if (createCheck)
+        return createCheck;
+    // Resolve scope mode for write access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'write', entity: 'definitions' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Forbidden', 403);
+    }
     const body = (await request.json().catch(() => null));
     if (!body)
         return jsonError('Invalid JSON body', 400);

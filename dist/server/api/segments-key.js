@@ -3,26 +3,30 @@ import { getDb } from '@/lib/db';
 import { metricsSegments } from '@/lib/feature-pack-schemas';
 import { eq } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
-function requireAdminOrService(request) {
-    const auth = getAuthContext(request);
-    if (!auth)
-        return { ok: false, res: jsonError('Unauthorized', 401) };
-    if (auth.kind === 'service')
-        return { ok: true };
-    const roles = Array.isArray(auth.user.roles) ? auth.user.roles : [];
-    if (!roles.includes('admin'))
-        return { ok: false, res: jsonError('Forbidden', 403) };
-    return { ok: true };
-}
 export async function GET(request, ctx) {
-    const gate = requireAdminOrService(request);
-    if (!gate.ok)
-        return gate.res;
+    const auth = getAuthContext(request);
+    if (!auth || auth.kind !== 'user')
+        return jsonError('Unauthorized', 401);
+    // Resolve scope mode for read access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'segments' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Not found', 404);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Not found', 404);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Not found', 404);
+    }
     const key = String(ctx?.params?.key || '').trim();
     if (!key)
         return jsonError('Missing key', 400);
@@ -33,9 +37,23 @@ export async function GET(request, ctx) {
     return NextResponse.json({ data: rows[0] });
 }
 export async function PUT(request, ctx) {
-    const gate = requireAdminOrService(request);
-    if (!gate.ok)
-        return gate.res;
+    const auth = getAuthContext(request);
+    if (!auth || auth.kind !== 'user')
+        return jsonError('Unauthorized', 401);
+    // Resolve scope mode for write access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'write', entity: 'segments' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Forbidden', 403);
+    }
     const key = String(ctx?.params?.key || '').trim();
     if (!key)
         return jsonError('Missing key', 400);
@@ -69,9 +87,23 @@ export async function PUT(request, ctx) {
     return NextResponse.json({ data: rows[0] });
 }
 export async function DELETE(request, ctx) {
-    const gate = requireAdminOrService(request);
-    if (!gate.ok)
-        return gate.res;
+    const auth = getAuthContext(request);
+    if (!auth || auth.kind !== 'user')
+        return jsonError('Unauthorized', 401);
+    // Resolve scope mode for delete access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'delete', entity: 'segments' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Forbidden', 403);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Forbidden', 403);
+    }
     const key = String(ctx?.params?.key || '').trim();
     if (!key)
         return jsonError('Missing key', 400);

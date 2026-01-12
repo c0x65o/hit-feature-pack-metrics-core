@@ -4,21 +4,13 @@ import { metricsMetricPoints, metricsSegments } from '@/lib/feature-pack-schemas
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 import { authQuery } from '../lib/auth-db';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
-}
-
-function requireAdminOrService(request: NextRequest) {
-  const auth = getAuthContext(request);
-  if (!auth) return { ok: false as const, res: jsonError('Unauthorized', 401) };
-  if (auth.kind === 'service') return { ok: true as const };
-  const roles = Array.isArray(auth.user.roles) ? auth.user.roles : [];
-  if (!roles.includes('admin')) return { ok: false as const, res: jsonError('Forbidden', 403) };
-  return { ok: true as const };
 }
 
 type MetricAgg = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
@@ -103,8 +95,27 @@ function windowRange(window: unknown): { start: Date | null; end: Date | null } 
 }
 
 export async function POST(request: NextRequest) {
-  const gate = requireAdminOrService(request);
-  if (!gate.ok) return gate.res;
+  const auth = getAuthContext(request);
+  if (!auth) return jsonError('Unauthorized', 401);
+  
+  // Service tokens bypass permission checks (internal service-to-service communication)
+  if (auth.kind === 'service') {
+    // Continue with service token access
+  } else if (auth.kind === 'user') {
+    // Resolve scope mode for read access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'segments' });
+
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+      return jsonError('Forbidden', 403);
+    } else if (mode === 'own' || mode === 'ldd') {
+      // Metrics-core doesn't have ownership or LDD fields, so deny access
+      return jsonError('Forbidden', 403);
+    } else if (mode !== 'any') {
+      // Fallback: deny access
+      return jsonError('Forbidden', 403);
+    }
+  }
 
   const body = (await request.json().catch(() => null)) as
     | { segmentKey?: unknown; entityKind?: unknown; page?: unknown; pageSize?: unknown }

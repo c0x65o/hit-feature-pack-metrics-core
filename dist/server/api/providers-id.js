@@ -7,6 +7,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
 import { loadPartnerDefinitions } from '../lib/partners';
 import { metricsDataSources, metricsLinks, metricsMetricPoints, metricsPartnerCredentials } from '@/lib/feature-pack-schemas';
+import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
@@ -107,8 +108,22 @@ function resolveIngestorTask(spec, fallbackName) {
 }
 export async function GET(request, ctx) {
     const auth = getAuthContext(request);
-    if (!auth)
+    if (!auth || auth.kind !== 'user')
         return jsonError('Unauthorized', 401);
+    // Resolve scope mode for read access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'providers' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        return jsonError('Not found', 404);
+    }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        return jsonError('Not found', 404);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        return jsonError('Not found', 404);
+    }
     const id = ctx.params.id;
     const p = ingestorYamlPath(id);
     if (!fs.existsSync(p))

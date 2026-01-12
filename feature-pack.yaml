@@ -11,37 +11,59 @@ description: "Core metrics system: metric definitions, data sources, ingestion, 
 routes:
   - path: /metrics
     page: Dashboard
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: metrics, verb: read }
   - path: /metrics/definitions
     page: Definitions
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: definitions, verb: read }
   - path: /metrics/providers
     page: Providers
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: providers, verb: read }
   - path: /metrics/providers/[id]
     page: ProviderDetail
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: providers, verb: read }
   - path: /metrics/integrations
     page: Integrations
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: integrations, verb: read }
   - path: /metrics/integrations/[id]
     page: IntegrationDetail
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: integrations, verb: read }
   - path: /metrics/mappings
     page: Mappings
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: mappings, verb: read }
   - path: /metrics/mappings/[type]
     page: MappingsType
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: mappings, verb: read }
   - path: /metrics/segments
     page: Segments
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: segments, verb: read }
   - path: /metrics/segments/new
     page: SegmentEdit
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: segments, verb: write, require_create: true }
   - path: /metrics/segments/[key]/edit
     page: SegmentEdit
-    roles: [admin]
+    roles: []
+    default_roles_allow: [admin]
+    authz: { entity: segments, verb: write }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NAVIGATION - Sidebar/topbar items
@@ -275,3 +297,293 @@ requires:
 dependencies:
   feature_packs:
     - name: erp-shell-core
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PERMISSIONS - Action definitions (for admin-core permissions UI + runtime checks)
+# ─────────────────────────────────────────────────────────────────────────────
+permissions:
+  actions:
+    # Scope Policy Tree: metrics-core (global) -> entity overrides.
+    #
+    # Scope modes:
+    # - none: deny all access for this verb/entity (hide pages + block APIs)
+    # - any: ignore scope (read everything)
+    # - own: only owned records (metrics-core doesn't have ownership fields, so this denies access)
+    # - ldd: owner OR matching L/D/D (metrics-core doesn't have LDD fields, so this denies access)
+    #
+    # These are mutually exclusive per node; the Security Groups UI renders them as dropdowns.
+    # Note: Metrics-core entities don't have ownership or LDD fields, so `own` and `ldd` modes deny access (only `any` mode allows access).
+    - key: metrics-core.read.scope.none
+      label: "Metrics Core Read Scope = None"
+      description: "Deny all metrics-core read access."
+      default_enabled: false
+    - key: metrics-core.read.scope.any
+      label: "Metrics Core Read Scope = Any"
+      description: "Read all metrics-core entities regardless of scope."
+      default_enabled: false
+    - key: metrics-core.read.scope.own
+      label: "Metrics Core Read Scope = Own"
+      description: "Read only metrics-core entities you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.read.scope.ldd
+      label: "Metrics Core Read Scope = LDD"
+      description: "Read metrics-core entities you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.write.scope.none
+      label: "Metrics Core Write Scope = None"
+      description: "Deny all metrics-core write access."
+      default_enabled: false
+    - key: metrics-core.write.scope.any
+      label: "Metrics Core Write Scope = Any"
+      description: "Edit metrics-core entities regardless of scope."
+      default_enabled: false
+    - key: metrics-core.write.scope.own
+      label: "Metrics Core Write Scope = Own"
+      description: "Edit only metrics-core entities you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.write.scope.ldd
+      label: "Metrics Core Write Scope = LDD"
+      description: "Edit metrics-core entities you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.delete.scope.none
+      label: "Metrics Core Delete Scope = None"
+      description: "Deny all metrics-core delete access."
+      default_enabled: false
+    - key: metrics-core.delete.scope.any
+      label: "Metrics Core Delete Scope = Any"
+      description: "Delete metrics-core entities regardless of scope."
+      default_enabled: false
+    - key: metrics-core.delete.scope.own
+      label: "Metrics Core Delete Scope = Own"
+      description: "Delete only metrics-core entities you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.delete.scope.ldd
+      label: "Metrics Core Delete Scope = LDD"
+      description: "Delete metrics-core entities you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    # Definitions override (optional): if set, overrides metrics-core.read.scope.* for definitions only.
+    - key: metrics-core.definitions.read.scope.none
+      label: "Metrics Core Definitions Read Scope = None"
+      description: "Deny all definition read access."
+      default_enabled: false
+    - key: metrics-core.definitions.read.scope.any
+      label: "Metrics Core Definitions Read Scope = Any"
+      description: "Read definitions regardless of scope."
+      default_enabled: false
+    - key: metrics-core.definitions.read.scope.own
+      label: "Metrics Core Definitions Read Scope = Own"
+      description: "Read only definitions you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.definitions.read.scope.ldd
+      label: "Metrics Core Definitions Read Scope = LDD"
+      description: "Read definitions you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.definitions.write.scope.none
+      label: "Metrics Core Definitions Write Scope = None"
+      description: "Deny all definition write access."
+      default_enabled: false
+    - key: metrics-core.definitions.write.scope.any
+      label: "Metrics Core Definitions Write Scope = Any"
+      description: "Edit definitions regardless of scope."
+      default_enabled: false
+    - key: metrics-core.definitions.write.scope.own
+      label: "Metrics Core Definitions Write Scope = Own"
+      description: "Edit only definitions you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.definitions.write.scope.ldd
+      label: "Metrics Core Definitions Write Scope = LDD"
+      description: "Edit definitions you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.definitions.create
+      label: Create Metric Definition
+      description: "Create a new metric definition."
+      default_enabled: false
+
+    # Providers override
+    - key: metrics-core.providers.read.scope.none
+      label: "Metrics Core Providers Read Scope = None"
+      description: "Deny all provider read access."
+      default_enabled: false
+    - key: metrics-core.providers.read.scope.any
+      label: "Metrics Core Providers Read Scope = Any"
+      description: "Read providers regardless of scope."
+      default_enabled: false
+    - key: metrics-core.providers.read.scope.own
+      label: "Metrics Core Providers Read Scope = Own"
+      description: "Read only providers you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.providers.read.scope.ldd
+      label: "Metrics Core Providers Read Scope = LDD"
+      description: "Read providers you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    # Integrations override
+    - key: metrics-core.integrations.read.scope.none
+      label: "Metrics Core Integrations Read Scope = None"
+      description: "Deny all integration read access."
+      default_enabled: false
+    - key: metrics-core.integrations.read.scope.any
+      label: "Metrics Core Integrations Read Scope = Any"
+      description: "Read integrations regardless of scope."
+      default_enabled: false
+    - key: metrics-core.integrations.read.scope.own
+      label: "Metrics Core Integrations Read Scope = Own"
+      description: "Read only integrations you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.integrations.read.scope.ldd
+      label: "Metrics Core Integrations Read Scope = LDD"
+      description: "Read integrations you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.integrations.write.scope.none
+      label: "Metrics Core Integrations Write Scope = None"
+      description: "Deny all integration write access."
+      default_enabled: false
+    - key: metrics-core.integrations.write.scope.any
+      label: "Metrics Core Integrations Write Scope = Any"
+      description: "Edit integrations regardless of scope."
+      default_enabled: false
+    - key: metrics-core.integrations.write.scope.own
+      label: "Metrics Core Integrations Write Scope = Own"
+      description: "Edit only integrations you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.integrations.write.scope.ldd
+      label: "Metrics Core Integrations Write Scope = LDD"
+      description: "Edit integrations you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.integrations.delete.scope.none
+      label: "Metrics Core Integrations Delete Scope = None"
+      description: "Deny all integration delete access."
+      default_enabled: false
+    - key: metrics-core.integrations.delete.scope.any
+      label: "Metrics Core Integrations Delete Scope = Any"
+      description: "Delete integrations regardless of scope."
+      default_enabled: false
+    - key: metrics-core.integrations.delete.scope.own
+      label: "Metrics Core Integrations Delete Scope = Own"
+      description: "Delete only integrations you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.integrations.delete.scope.ldd
+      label: "Metrics Core Integrations Delete Scope = LDD"
+      description: "Delete integrations you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    # Mappings override
+    - key: metrics-core.mappings.read.scope.none
+      label: "Metrics Core Mappings Read Scope = None"
+      description: "Deny all mapping read access."
+      default_enabled: false
+    - key: metrics-core.mappings.read.scope.any
+      label: "Metrics Core Mappings Read Scope = Any"
+      description: "Read mappings regardless of scope."
+      default_enabled: false
+    - key: metrics-core.mappings.read.scope.own
+      label: "Metrics Core Mappings Read Scope = Own"
+      description: "Read only mappings you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.mappings.read.scope.ldd
+      label: "Metrics Core Mappings Read Scope = LDD"
+      description: "Read mappings you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.mappings.write.scope.none
+      label: "Metrics Core Mappings Write Scope = None"
+      description: "Deny all mapping write access."
+      default_enabled: false
+    - key: metrics-core.mappings.write.scope.any
+      label: "Metrics Core Mappings Write Scope = Any"
+      description: "Edit mappings regardless of scope."
+      default_enabled: false
+    - key: metrics-core.mappings.write.scope.own
+      label: "Metrics Core Mappings Write Scope = Own"
+      description: "Edit only mappings you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.mappings.write.scope.ldd
+      label: "Metrics Core Mappings Write Scope = LDD"
+      description: "Edit mappings you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.mappings.delete.scope.none
+      label: "Metrics Core Mappings Delete Scope = None"
+      description: "Deny all mapping delete access."
+      default_enabled: false
+    - key: metrics-core.mappings.delete.scope.any
+      label: "Metrics Core Mappings Delete Scope = Any"
+      description: "Delete mappings regardless of scope."
+      default_enabled: false
+    - key: metrics-core.mappings.delete.scope.own
+      label: "Metrics Core Mappings Delete Scope = Own"
+      description: "Delete only mappings you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.mappings.delete.scope.ldd
+      label: "Metrics Core Mappings Delete Scope = LDD"
+      description: "Delete mappings you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.mappings.create
+      label: Create Mapping
+      description: "Create a new mapping."
+      default_enabled: false
+
+    # Segments override
+    - key: metrics-core.segments.read.scope.none
+      label: "Metrics Core Segments Read Scope = None"
+      description: "Deny all segment read access."
+      default_enabled: false
+    - key: metrics-core.segments.read.scope.any
+      label: "Metrics Core Segments Read Scope = Any"
+      description: "Read segments regardless of scope."
+      default_enabled: false
+    - key: metrics-core.segments.read.scope.own
+      label: "Metrics Core Segments Read Scope = Own"
+      description: "Read only segments you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.segments.read.scope.ldd
+      label: "Metrics Core Segments Read Scope = LDD"
+      description: "Read segments you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.segments.write.scope.none
+      label: "Metrics Core Segments Write Scope = None"
+      description: "Deny all segment write access."
+      default_enabled: false
+    - key: metrics-core.segments.write.scope.any
+      label: "Metrics Core Segments Write Scope = Any"
+      description: "Edit segments regardless of scope."
+      default_enabled: false
+    - key: metrics-core.segments.write.scope.own
+      label: "Metrics Core Segments Write Scope = Own"
+      description: "Edit only segments you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.segments.write.scope.ldd
+      label: "Metrics Core Segments Write Scope = LDD"
+      description: "Edit segments you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.segments.delete.scope.none
+      label: "Metrics Core Segments Delete Scope = None"
+      description: "Deny all segment delete access."
+      default_enabled: false
+    - key: metrics-core.segments.delete.scope.any
+      label: "Metrics Core Segments Delete Scope = Any"
+      description: "Delete segments regardless of scope."
+      default_enabled: false
+    - key: metrics-core.segments.delete.scope.own
+      label: "Metrics Core Segments Delete Scope = Own"
+      description: "Delete only segments you own (metrics-core doesn't have ownership fields, so this denies access)."
+      default_enabled: false
+    - key: metrics-core.segments.delete.scope.ldd
+      label: "Metrics Core Segments Delete Scope = LDD"
+      description: "Delete segments you own, or that match your L/D/D scope (metrics-core doesn't have LDD fields, so this denies access)."
+      default_enabled: false
+
+    - key: metrics-core.segments.create
+      label: Create Segment
+      description: "Create a new segment."
+      default_enabled: false
