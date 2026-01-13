@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.102",
+  "version": "1.0.103",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

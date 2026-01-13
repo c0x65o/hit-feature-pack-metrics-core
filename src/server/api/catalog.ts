@@ -28,6 +28,11 @@ type MetricStatus = {
    * This is intentionally untyped and pass-through: the catalog generator (and apps) own the schema.
    */
   ui?: Record<string, any>;
+  /**
+   * Optional bootstrap defaults for metric ACLs.
+   * Matches the field used in generated `.hit/metrics/catalog.generated.ts`.
+   */
+  default_roles_allow?: string[];
   pointsCount: number;
   firstPointAt: string | null;
   lastPointAt: string | null;
@@ -128,6 +133,9 @@ export async function GET(request: NextRequest) {
   const items: MetricStatus[] = allowedKeys.map((k) => {
     const cfg = mergedByKey.get(k)!;
     const stat = byKey.get(k);
+    const dra = Array.isArray(cfg.default_roles_allow)
+      ? (cfg.default_roles_allow as any[]).map((x: any) => String(x || '').trim().toLowerCase()).filter(Boolean)
+      : [];
     return {
       key: k,
       label: cfg.label,
@@ -154,6 +162,7 @@ export async function GET(request: NextRequest) {
           : undefined,
       dimensions_schema: cfg.dimensions_schema,
       ui: cfg.ui && typeof cfg.ui === 'object' ? cfg.ui : undefined,
+      default_roles_allow: dra.length ? dra : undefined,
       pointsCount: stat ? Number(stat.pointsCount || 0) : 0,
       firstPointAt: stat?.firstPointAt ? new Date(stat.firstPointAt).toISOString() : null,
       lastPointAt: stat?.lastPointAt ? new Date(stat.lastPointAt).toISOString() : null,

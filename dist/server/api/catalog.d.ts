@@ -26,6 +26,11 @@ type MetricStatus = {
      * This is intentionally untyped and pass-through: the catalog generator (and apps) own the schema.
      */
     ui?: Record<string, any>;
+    /**
+     * Optional bootstrap defaults for metric ACLs.
+     * Matches the field used in generated `.hit/metrics/catalog.generated.ts`.
+     */
+    default_roles_allow?: string[];
     pointsCount: number;
     firstPointAt: string | null;
     lastPointAt: string | null;
