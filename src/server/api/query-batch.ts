@@ -4,6 +4,7 @@ import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { tryRunComputedMetricQuery, type QueryBody as ComputedQueryBody } from '../lib/computed-metrics';
+import { loadCompiledMetricsCatalog } from '../lib/compiled-catalog';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,16 +37,11 @@ type BatchBody = { queries: QueryBody[] };
 
 async function loadCatalogEntries(metricKeys: string[]): Promise<Record<string, any>> {
   const out: Record<string, any> = {};
-  try {
-    const mod = await import('@/.hit/metrics/catalog.generated');
-    const cat = (mod as any)?.METRICS_CATALOG;
-    if (!cat || typeof cat !== 'object') return out;
-    for (const mk of metricKeys) {
-      const e = (cat as any)[mk];
-      if (e && typeof e === 'object') out[mk] = e;
-    }
-  } catch {
-    // ignore
+  const cat = await loadCompiledMetricsCatalog();
+  if (!cat || typeof cat !== 'object') return out;
+  for (const mk of metricKeys) {
+    const e = (cat as any)[mk];
+    if (e && typeof e === 'object') out[mk] = e;
   }
   return out;
 }

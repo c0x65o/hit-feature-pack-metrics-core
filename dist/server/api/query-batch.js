@@ -4,6 +4,7 @@ import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, asc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { tryRunComputedMetricQuery } from '../lib/computed-metrics';
+import { loadCompiledMetricsCatalog } from '../lib/compiled-catalog';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
@@ -11,19 +12,13 @@ function jsonError(message, status = 400) {
 }
 async function loadCatalogEntries(metricKeys) {
     const out = {};
-    try {
-        const mod = await import('@/.hit/metrics/catalog.generated');
-        const cat = mod?.METRICS_CATALOG;
-        if (!cat || typeof cat !== 'object')
-            return out;
-        for (const mk of metricKeys) {
-            const e = cat[mk];
-            if (e && typeof e === 'object')
-                out[mk] = e;
-        }
-    }
-    catch {
-        // ignore
+    const cat = await loadCompiledMetricsCatalog();
+    if (!cat || typeof cat !== 'object')
+        return out;
+    for (const mk of metricKeys) {
+        const e = cat[mk];
+        if (e && typeof e === 'object')
+            out[mk] = e;
     }
     return out;
 }

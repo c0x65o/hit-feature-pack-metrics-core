@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { inArray, sql } from 'drizzle-orm';
+import { loadCompiledMetricsCatalog } from '../lib/compiled-catalog';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,9 +50,7 @@ export async function GET(request: NextRequest) {
   let compiledCatalog: Record<string, any> = {};
   let catalogMissingMessage: string | null = null;
   try {
-    // Dynamic import to handle case where catalog doesn't exist yet
-    const catalogModule = await import('@/.hit/metrics/catalog.generated');
-    compiledCatalog = catalogModule.METRICS_CATALOG || {};
+    compiledCatalog = await loadCompiledMetricsCatalog();
   } catch {
     catalogMissingMessage = 'Metrics catalog not generated. Run `hit run` to generate it.';
   }

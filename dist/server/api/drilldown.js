@@ -6,6 +6,7 @@ import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { drilldownSchema } from './drilldown.schema';
 import { getAppReportTimezone } from '../lib/reporting';
 import { tryRunComputedMetricDrilldown } from '../lib/computed-metrics';
+import { loadCompiledMetricsCatalog } from '../lib/compiled-catalog';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export { drilldownSchema } from './drilldown.schema';
@@ -13,17 +14,9 @@ function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
 async function loadCatalogEntry(metricKey) {
-    try {
-        const mod = await import('@/.hit/metrics/catalog.generated');
-        const cat = mod?.METRICS_CATALOG;
-        if (!cat || typeof cat !== 'object')
-            return null;
-        const e = cat[metricKey];
-        return e && typeof e === 'object' ? e : null;
-    }
-    catch {
-        return null;
-    }
+    const cat = await loadCompiledMetricsCatalog();
+    const e = cat?.[metricKey];
+    return e && typeof e === 'object' ? e : null;
 }
 function parseOptionalDate(label, raw) {
     if (raw == null)

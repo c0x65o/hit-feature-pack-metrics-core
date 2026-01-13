@@ -4,6 +4,7 @@ import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { tryRunComputedMetricQuery, type QueryBody as ComputedQueryBody } from '../lib/computed-metrics';
+import { loadCompiledMetricsCatalog } from '../lib/compiled-catalog';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -33,15 +34,9 @@ type QueryBody = {
 };
 
 async function loadCatalogEntry(metricKey: string): Promise<any | null> {
-  try {
-    const mod = await import('@/.hit/metrics/catalog.generated');
-    const cat = (mod as any)?.METRICS_CATALOG;
-    if (!cat || typeof cat !== 'object') return null;
-    const e = (cat as any)[metricKey];
-    return e && typeof e === 'object' ? e : null;
-  } catch {
-    return null;
-  }
+  const cat = await loadCompiledMetricsCatalog();
+  const e = (cat as any)?.[metricKey];
+  return e && typeof e === 'object' ? e : null;
 }
 
 export async function POST(request: NextRequest) {

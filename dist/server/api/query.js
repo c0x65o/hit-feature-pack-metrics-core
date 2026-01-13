@@ -4,23 +4,16 @@ import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { and, eq, gte, inArray, lte, sql, asc } from 'drizzle-orm';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { tryRunComputedMetricQuery } from '../lib/computed-metrics';
+import { loadCompiledMetricsCatalog } from '../lib/compiled-catalog';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
 }
 async function loadCatalogEntry(metricKey) {
-    try {
-        const mod = await import('@/.hit/metrics/catalog.generated');
-        const cat = mod?.METRICS_CATALOG;
-        if (!cat || typeof cat !== 'object')
-            return null;
-        const e = cat[metricKey];
-        return e && typeof e === 'object' ? e : null;
-    }
-    catch {
-        return null;
-    }
+    const cat = await loadCompiledMetricsCatalog();
+    const e = cat?.[metricKey];
+    return e && typeof e === 'object' ? e : null;
 }
 export async function POST(request) {
     const auth = getAuthContext(request);
