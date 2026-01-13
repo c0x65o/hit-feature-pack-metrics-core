@@ -5,11 +5,25 @@ import { metricsMetricPoints } from '@/lib/feature-pack-schemas';
 import { getAuthContext, checkMetricPermissions } from '../lib/authz';
 import { drilldownSchema } from './drilldown.schema';
 import { getAppReportTimezone } from '../lib/reporting';
+import { tryRunComputedMetricDrilldown } from '../lib/computed-metrics';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export { drilldownSchema } from './drilldown.schema';
 function jsonError(message, status = 400) {
     return NextResponse.json({ error: message }, { status });
+}
+async function loadCatalogEntry(metricKey) {
+    try {
+        const mod = await import('@/.hit/metrics/catalog.generated');
+        const cat = mod?.METRICS_CATALOG;
+        if (!cat || typeof cat !== 'object')
+            return null;
+        const e = cat[metricKey];
+        return e && typeof e === 'object' ? e : null;
+    }
+    catch {
+        return null;
+    }
 }
 function parseOptionalDate(label, raw) {
     if (raw == null)
@@ -51,6 +65,7 @@ function buildWhereFromPointFilter(filter) {
     const entityIds = Array.isArray(filter.entityIds) ? filter.entityIds.map((x) => String(x || '').trim()).filter(Boolean) : [];
     const dataSourceId = typeof filter.dataSourceId === 'string' ? filter.dataSourceId.trim() : '';
     const sourceGranularity = typeof filter.sourceGranularity === 'string' ? filter.sourceGranularity.trim() : '';
+    const params = filter.params && typeof filter.params === 'object' ? filter.params : null;
     const dimensions = filter.dimensions && typeof filter.dimensions === 'object' ? filter.dimensions : null;
     const whereParts = [eq(metricsMetricPoints.metricKey, metricKey)];
     if (start)
@@ -89,6 +104,7 @@ function buildWhereFromPointFilter(filter) {
         entityIds,
         dataSourceId: dataSourceId || null,
         sourceGranularity: sourceGranularity || null,
+        params: params || null,
         dimensions: dimensions || null,
         where: and(...whereParts),
     };
@@ -125,6 +141,7 @@ function derivePointFilterFromAggregate(input) {
     const entityIds = Array.isArray(base.entityIds) ? base.entityIds.map((x) => String(x || '').trim()).filter(Boolean) : [];
     const dataSourceId = typeof base.dataSourceId === 'string' ? base.dataSourceId.trim() : '';
     const sourceGranularity = typeof base.sourceGranularity === 'string' ? base.sourceGranularity.trim() : '';
+    const params = base.params && typeof base.params === 'object' ? base.params : null;
     // Dimensions: start from base.dimensions (filters), then add rowContext.dimensions (group values).
     const dims = {};
     if (base.dimensions && typeof base.dimensions === 'object')
@@ -154,6 +171,7 @@ function derivePointFilterFromAggregate(input) {
             entityIds: entityIds.length ? entityIds : undefined,
             dataSourceId: dataSourceId || undefined,
             sourceGranularity: sourceGranularity || undefined,
+            params: params || undefined,
             dimensions: Object.keys(dims).length ? dims : undefined,
         },
         meta: {
@@ -200,6 +218,45 @@ export async function POST(request) {
     const permissions = await checkMetricPermissions(request, [metricKey]);
     if (!permissions[metricKey]) {
         return jsonError(`Forbidden: you do not have permission to read metric '${metricKey}'.`, 403);
+    }
+    // Computed metrics fallback (no stored points).
+    // If we don't have points for this metricKey, let computed-metrics return "point-like" rows for drilldown.
+    try {
+        const db = getDb();
+        const hasPoint = await db
+            .select({ one: sql `1`.as('one') })
+            .from(metricsMetricPoints)
+            .where(eq(metricsMetricPoints.metricKey, metricKey))
+            .limit(1);
+        if (!hasPoint.length) {
+            const catalogEntry = await loadCatalogEntry(metricKey);
+            const computed = await tryRunComputedMetricDrilldown({
+                db,
+                pointFilter: resolvedPointFilter,
+                page: body.page,
+                pageSize: body.pageSize,
+                catalogEntry: catalogEntry || undefined,
+            });
+            if (computed) {
+                if (!computed.ok)
+                    return jsonError(computed.error, 400);
+                return NextResponse.json({
+                    meta: {
+                        derivedFrom: deriveMeta,
+                        resolvedPointFilter: resolvedPointFilter,
+                        reportTimezone,
+                        computed: true,
+                        computedMeta: computed.meta,
+                    },
+                    pagination: computed.pagination,
+                    points: computed.points,
+                    contributors: null,
+                });
+            }
+        }
+    }
+    catch {
+        // fall through to points path
     }
     let whereBuilt;
     try {

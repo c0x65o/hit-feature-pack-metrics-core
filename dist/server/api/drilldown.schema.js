@@ -15,6 +15,7 @@ export const drilldownSchema = z.object({
         entityIds: z.array(z.string()).optional(),
         dataSourceId: z.string().optional(),
         sourceGranularity: z.string().optional(),
+        params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
         dimensions: dimensionsSchema.optional(),
         groupBy: z.array(z.string()).optional(),
         groupByEntityId: z.boolean().optional(),
@@ -40,6 +41,7 @@ export const drilldownSchema = z.object({
         entityIds: z.array(z.string()).optional(),
         dataSourceId: z.string().optional(),
         sourceGranularity: z.string().optional(),
+        params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
         dimensions: dimensionsSchema.optional(),
     })
         .optional(),

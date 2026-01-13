@@ -14,6 +14,8 @@ export const postBodySchema = z.object({
   entityIds: z.array(z.string()).optional(),
   dataSourceId: z.string().optional(),
   sourceGranularity: z.string().optional(),
+  // Metric parameters (non-dimensional runtime inputs; validated by metric implementation if used).
+  params: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   dimensions: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   groupBy: z.array(z.string()).optional(),
   groupByEntityId: z.boolean().optional(),

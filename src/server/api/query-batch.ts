@@ -26,6 +26,7 @@ type QueryBody = {
   entityIds?: string[];
   dataSourceId?: string;
   sourceGranularity?: string;
+  params?: Record<string, string | number | boolean | null>;
   dimensions?: Record<string, string | number | boolean | null>;
   groupBy?: string[];
   groupByEntityId?: boolean;

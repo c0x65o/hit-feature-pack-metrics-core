@@ -24,6 +24,7 @@ export declare const drilldownSchema: z.ZodObject<{
         entityIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
         dataSourceId: z.ZodOptional<z.ZodString>;
         sourceGranularity: z.ZodOptional<z.ZodString>;
+        params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodNull]>>>;
         dimensions: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodNull]>>>;
         groupBy: z.ZodOptional<z.ZodArray<z.ZodString>>;
         groupByEntityId: z.ZodOptional<z.ZodBoolean>;
@@ -42,6 +43,7 @@ export declare const drilldownSchema: z.ZodObject<{
         entityIds: z.ZodOptional<z.ZodArray<z.ZodString>>;
         dataSourceId: z.ZodOptional<z.ZodString>;
         sourceGranularity: z.ZodOptional<z.ZodString>;
+        params: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodNull]>>>;
         dimensions: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnion<readonly [z.ZodString, z.ZodNumber, z.ZodBoolean, z.ZodNull]>>>;
     }, z.core.$strip>>;
     page: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
