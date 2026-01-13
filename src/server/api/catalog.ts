@@ -133,9 +133,13 @@ export async function GET(request: NextRequest) {
   const items: MetricStatus[] = allowedKeys.map((k) => {
     const cfg = mergedByKey.get(k)!;
     const stat = byKey.get(k);
-    const dra = Array.isArray(cfg.default_roles_allow)
+    // Metrics defaulting semantics:
+    // - If `default_roles_allow` is omitted, default to admin-only (matches "by default it is admin only").
+    // - If provided, normalize/validate and use as-is.
+    const draRaw = Array.isArray(cfg.default_roles_allow)
       ? (cfg.default_roles_allow as any[]).map((x: any) => String(x || '').trim().toLowerCase()).filter(Boolean)
       : [];
+    const dra = draRaw.length ? draRaw : ['admin'];
     return {
       key: k,
       label: cfg.label,
@@ -162,7 +166,7 @@ export async function GET(request: NextRequest) {
           : undefined,
       dimensions_schema: cfg.dimensions_schema,
       ui: cfg.ui && typeof cfg.ui === 'object' ? cfg.ui : undefined,
-      default_roles_allow: dra.length ? dra : undefined,
+      default_roles_allow: dra,
       pointsCount: stat ? Number(stat.pointsCount || 0) : 0,
       firstPointAt: stat?.firstPointAt ? new Date(stat.firstPointAt).toISOString() : null,
       lastPointAt: stat?.lastPointAt ? new Date(stat.lastPointAt).toISOString() : null,
