@@ -1,12 +1,12 @@
 import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
-import { pgTable, uuid, varchar, boolean, numeric, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, boolean, integer, numeric, timestamp } from 'drizzle-orm/pg-core';
 // Minimal CRM table shapes (metrics-core must not depend on the CRM feature pack at build-time).
 // Keep these small and stable: only add columns needed for computed queries/drilldowns.
 const crmPipelineStages = pgTable('crm_pipeline_stages', {
     id: uuid('id'),
     code: varchar('code', { length: 50 }),
     name: varchar('name', { length: 100 }),
-    order: numeric('order'),
+    order: integer('order'),
     isClosedWon: boolean('is_closed_won'),
     isClosedLost: boolean('is_closed_lost'),
 });
@@ -339,8 +339,6 @@ export async function tryRunComputedMetricQuery(args) {
     if (snapshotKeys.has(metricKey)) {
         if (bucket !== 'none')
             return { ok: false, error: 'This CRM snapshot metric only supports bucket=none' };
-        if (agg === 'last')
-            return { ok: false, error: 'agg=last is not supported for this CRM snapshot metric (use agg=sum/count)' };
         if (groupBy.length)
             return { ok: false, error: 'groupBy is not supported for this CRM snapshot metric' };
         if (metricKey === 'fp.crm.prospects_count') {
@@ -379,8 +377,6 @@ export async function tryRunComputedMetricQuery(args) {
     if (isPipelineStageCount || isPipelineStageValue) {
         if (bucket !== 'none')
             return { ok: false, error: 'Pipeline-by-stage metrics only support bucket=none' };
-        if (agg === 'last')
-            return { ok: false, error: 'agg=last is not supported for CRM pipeline-by-stage metrics' };
         const where = [];
         const stageFilterRes = applyStageDimFilters(dimFilters, where);
         if (!stageFilterRes.ok)
@@ -457,8 +453,6 @@ export async function tryRunComputedMetricQuery(args) {
     if (isLikelihoodCount || isLikelihoodValue) {
         if (bucket !== 'none')
             return { ok: false, error: 'Likelihood distribution metrics only support bucket=none' };
-        if (agg === 'last')
-            return { ok: false, error: 'agg=last is not supported for CRM likelihood metrics' };
         const where = [];
         const likeFilterRes = applyLikelihoodDimFilters(dimFilters, where);
         if (!likeFilterRes.ok)
@@ -517,8 +511,6 @@ export async function tryRunComputedMetricQuery(args) {
     if (isStalledCount || isStalledValue) {
         if (bucket !== 'none')
             return { ok: false, error: 'Stalled opportunity snapshot metrics only support bucket=none' };
-        if (agg === 'last')
-            return { ok: false, error: 'agg=last is not supported for stalled opportunity metrics' };
         if (groupBy.length)
             return { ok: false, error: 'groupBy is not supported for stalled opportunity totals (use drilldown instead)' };
         const daysRaw = params.days;
