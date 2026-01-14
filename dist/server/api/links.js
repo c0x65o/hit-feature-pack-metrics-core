@@ -15,22 +15,25 @@ function cryptoRandomId() {
 }
 export async function GET(request) {
     const auth = getAuthContext(request);
-    if (!auth || auth.kind !== 'user')
+    if (!auth)
         return jsonError('Unauthorized', 401);
-    // Resolve scope mode for read access
-    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'mappings' });
-    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
-    if (mode === 'none') {
-        // Explicit deny: return empty results (fail-closed but non-breaking for list UI)
-        return NextResponse.json({ data: [] });
-    }
-    else if (mode === 'own' || mode === 'ldd') {
-        // Metrics-core doesn't have ownership or LDD fields, so deny access
-        return NextResponse.json({ data: [] });
-    }
-    else if (mode !== 'any') {
-        // Fallback: deny access
-        return NextResponse.json({ data: [] });
+    // Service tokens bypass scope checks (internal service-to-service / CLI communication)
+    if (auth.kind !== 'service') {
+        // User requests: resolve scope mode for read access
+        const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'mappings' });
+        // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+        if (mode === 'none') {
+            // Explicit deny: return empty results (fail-closed but non-breaking for list UI)
+            return NextResponse.json({ data: [] });
+        }
+        else if (mode === 'own' || mode === 'ldd') {
+            // Metrics-core doesn't have ownership or LDD fields, so deny access
+            return NextResponse.json({ data: [] });
+        }
+        else if (mode !== 'any') {
+            // Fallback: deny access
+            return NextResponse.json({ data: [] });
+        }
     }
     const url = new URL(request.url);
     const linkType = (url.searchParams.get('linkType') || '').trim();
