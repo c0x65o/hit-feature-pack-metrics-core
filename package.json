@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.109",
+  "version": "1.0.110",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -61,10 +61,12 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@hit/feature-pack-auth-core": "file:../hit-feature-pack-auth-core",
     "js-yaml": "^4.1.1",
     "pg": "^8.16.3"
   },
   "peerDependencies": {
+    "@hit/feature-pack-auth-core": "*",
     "@hit/sdk": "*",
     "@hit/ui-kit": "*",
     "drizzle-orm": "^0.38.0",
