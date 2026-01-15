@@ -1,6 +1,6 @@
 {
   "name": "@hit/feature-pack-metrics-core",
-  "version": "1.0.111",
+  "version": "1.0.112",
   "description": "A HIT feature pack",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -61,7 +61,6 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@hit/feature-pack-auth-core": "file:../hit-feature-pack-auth-core",
     "js-yaml": "^4.1.1",
     "pg": "^8.16.3"
   },
@@ -84,6 +83,7 @@
     }
   },
   "devDependencies": {
+    "@hit/feature-pack-auth-core": "file:../hit-feature-pack-auth-core",
     "@hit/feature-pack-stubs": "file:../../../packages/hit-feature-pack-stubs",
     "@hit/sdk": "file:../../../hit-sdks/hit-sdk-typescript",
     "@hit/ui-kit": "file:../../../packages/hit-ui-kit-ts",
