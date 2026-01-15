@@ -6,5 +6,5 @@ export declare function GET(request: NextRequest): Promise<NextResponse<{
 }> | NextResponse<{
     data: any;
 }>>;
-export declare function POST(request: NextRequest): Promise<NextResponse<unknown>>;
+export declare function POST(request: NextRequest): Promise<Response>;
 //# sourceMappingURL=definitions.d.ts.map

@@ -56,7 +56,7 @@ export function ProviderDetail() {
         setError(null);
         setLastTriggeredExecutionId(null);
         try {
-            const res = await fetch(`/api/proxy/tasks/hit/tasks/${encodeURIComponent(task.name)}/execute`, {
+            const res = await fetch(`/api/proxy/jobs/hit/tasks/${encodeURIComponent(task.name)}/execute`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },

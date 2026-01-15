@@ -51,8 +51,8 @@ export function Dashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => (window.location.href = '/admin/tasks')}>
-            Tasks Admin
+          <Button variant="secondary" onClick={() => (window.location.href = '/admin/jobs')}>
+            Jobs Admin
           </Button>
         </div>
       </div>

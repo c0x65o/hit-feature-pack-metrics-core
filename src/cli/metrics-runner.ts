@@ -8,11 +8,11 @@
  * - This runner is what you point a HIT task at (in hit.yaml).
  * - It runs your script/command.
  * - Your script prints JSON metric points to stdout.
- * - The runner POSTs those points to /api/metrics/ingest using X-HIT-Service-Token.
+ * - The runner POSTs those points to /api/metrics/ingest using Authorization: Bearer.
  *   (and includes the configured data source so the server can upsert it as part of ingestion).
  *
  * Example task command:
- *   HIT_APP_URL=http://localhost:3000 HIT_SERVICE_TOKEN=... \
+ *   HIT_APP_URL=http://localhost:3000 HIT_BEARER_TOKEN=... \
  *   node node_modules/@hit/feature-pack-metrics-core/dist/cli/metrics-runner.js \
  *     --data-source-id ds_steam_sales_main \
  *     --entity-kind project --entity-id proj_123 \
@@ -24,7 +24,7 @@ import { spawn } from 'node:child_process';
 
 type RunnerArgs = {
   baseUrl: string;
-  serviceToken: string;
+  bearerToken: string;
   dataSourceId?: string;
   entityKind?: string;
   entityId?: string;
@@ -51,8 +51,8 @@ type Point = {
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
 
-  if (!parsed.serviceToken) {
-    throw new Error('Missing service token. Set HIT_SERVICE_TOKEN or pass --service-token');
+  if (!parsed.bearerToken) {
+    throw new Error('Missing bearer token. Set HIT_BEARER_TOKEN or pass --bearer-token');
   }
   if (!parsed.command) {
     throw new Error('Missing command. Use -- <command ...args>');
@@ -95,7 +95,7 @@ async function main() {
 
   await ingestPoints(
     parsed.baseUrl,
-    parsed.serviceToken,
+    parsed.bearerToken,
     {
       id: dataSourceId,
       entityKind: parsed.entityKind,
@@ -131,11 +131,11 @@ function parseArgs(argv: string[]): RunnerArgs {
     process.env.HIT_APP_URL ||
     process.env.HIT_APP_PUBLIC_URL ||
     `http://localhost:${portGuess}`;
-  const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
+  const bearerToken = process.env.HIT_BEARER_TOKEN || '';
 
   const out: Omit<RunnerArgs, 'command' | 'commandArgs'> & { command?: string; commandArgs?: string[] } = {
     baseUrl,
-    serviceToken,
+    bearerToken,
   };
 
   const sepIdx = argv.indexOf('--');
@@ -152,7 +152,7 @@ function parseArgs(argv: string[]): RunnerArgs {
     };
 
     if (a === '--base-url') out.baseUrl = next();
-    else if (a === '--service-token') out.serviceToken = next();
+    else if (a === '--bearer-token') out.bearerToken = next();
     else if (a === '--data-source-id') out.dataSourceId = next();
     else if (a === '--entity-kind') out.entityKind = next();
     else if (a === '--entity-id') out.entityId = next();
@@ -164,7 +164,7 @@ function parseArgs(argv: string[]): RunnerArgs {
 
   return {
     baseUrl: out.baseUrl!,
-    serviceToken: out.serviceToken!,
+    bearerToken: out.bearerToken!,
     dataSourceId: out.dataSourceId,
     entityKind: out.entityKind,
     entityId: out.entityId,
@@ -178,7 +178,7 @@ function parseArgs(argv: string[]): RunnerArgs {
 
 async function ingestPoints(
   baseUrl: string,
-  token: string,
+  bearerToken: string,
   dataSource: {
     id: string;
     entityKind?: string;
@@ -193,11 +193,12 @@ async function ingestPoints(
   if (!dataSource.entityKind || !dataSource.entityId || !dataSource.connectorKey || !dataSource.sourceKind) {
     throw new Error('Missing entityKind/entityId/connectorKey/sourceKind (required to ingest with dataSource).');
   }
+  const authHeader = normalizeBearer(bearerToken);
   const res = await fetch(`${stripTrailingSlash(baseUrl)}/api/metrics/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-HIT-Service-Token': token,
+      Authorization: authHeader,
     },
     body: JSON.stringify({
       dataSource: {
@@ -275,6 +276,12 @@ function runCommand(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promis
 
 function stripTrailingSlash(url: string) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function normalizeBearer(raw: string): string {
+  const token = String(raw || '').trim();
+  if (!token) return '';
+  return token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
 }
 
 main().catch((err) => {

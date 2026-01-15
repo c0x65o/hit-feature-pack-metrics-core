@@ -172,31 +172,25 @@ export async function POST(request) {
     const auth = getAuthContext(request);
     if (!auth)
         return jsonError('Unauthorized', 401);
-    // Service tokens bypass permission checks (internal service-to-service communication)
-    if (auth.kind === 'service') {
-        // Continue with service token access
+    // Resolve scope mode for read access
+    const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'segments' });
+    // Apply scope-based filtering (explicit branching on none/own/ldd/any)
+    if (mode === 'none') {
+        // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
+        if (!allowSelfUserEvaluate(request, entityKind, entityId))
+            return jsonError('Forbidden', 403);
     }
-    else if (auth.kind === 'user') {
-        // Resolve scope mode for read access
-        const mode = await resolveMetricsCoreScopeMode(request, { verb: 'read', entity: 'segments' });
-        // Apply scope-based filtering (explicit branching on none/own/ldd/any)
-        if (mode === 'none') {
-            // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
-            if (!allowSelfUserEvaluate(request, entityKind, entityId))
-                return jsonError('Forbidden', 403);
-        }
-        else if (mode === 'own' || mode === 'ldd') {
-            // Metrics-core doesn't have ownership or LDD fields, so deny access
-            // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
-            if (!allowSelfUserEvaluate(request, entityKind, entityId))
-                return jsonError('Forbidden', 403);
-        }
-        else if (mode !== 'any') {
-            // Fallback: deny access
-            // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
-            if (!allowSelfUserEvaluate(request, entityKind, entityId))
-                return jsonError('Forbidden', 403);
-        }
+    else if (mode === 'own' || mode === 'ldd') {
+        // Metrics-core doesn't have ownership or LDD fields, so deny access
+        // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
+        if (!allowSelfUserEvaluate(request, entityKind, entityId))
+            return jsonError('Forbidden', 403);
+    }
+    else if (mode !== 'any') {
+        // Fallback: deny access
+        // Allow non-admin users to evaluate membership for themselves only (used by Vault ACL).
+        if (!allowSelfUserEvaluate(request, entityKind, entityId))
+            return jsonError('Forbidden', 403);
     }
     const db = getDb();
     const segRows = await db.select().from(metricsSegments).where(eq(metricsSegments.key, segmentKey)).limit(1);

@@ -49,13 +49,13 @@ function parseArgs(argv: string[]) {
   return { name };
 }
 
-async function ensureDefinitions(baseUrl: string, token: string, defs: Record<string, MetricsDefinitionConfig>) {
+async function ensureDefinitions(baseUrl: string, bearerToken: string, defs: Record<string, MetricsDefinitionConfig>) {
   for (const [key, cfg] of Object.entries(defs)) {
     const res = await fetch(`${stripTrailingSlash(baseUrl)}/api/metrics/definitions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-HIT-Service-Token': token,
+        Authorization: normalizeBearer(bearerToken),
       },
       body: JSON.stringify({
         key,
@@ -76,7 +76,7 @@ async function ensureDefinitions(baseUrl: string, token: string, defs: Record<st
   }
 }
 
-function runBackfill(baseUrl: string, token: string, cfg: MetricsBackfillConfig) {
+function runBackfill(baseUrl: string, bearerToken: string, cfg: MetricsBackfillConfig) {
   const runnerPath = path.join(process.cwd(), 'node_modules', '@hit', 'feature-pack-metrics-core', 'dist', 'cli', 'metrics-runner.js');
   if (!fs.existsSync(runnerPath)) {
     throw new Error(`metrics-runner not found at ${runnerPath}. Did you npm install?`);
@@ -86,8 +86,8 @@ function runBackfill(baseUrl: string, token: string, cfg: MetricsBackfillConfig)
     runnerPath,
     '--base-url',
     baseUrl,
-    '--service-token',
-    token,
+    '--bearer-token',
+    bearerToken,
     '--data-source-id',
     cfg.data_source_id,
     '--entity-kind',
@@ -115,8 +115,8 @@ function runBackfill(baseUrl: string, token: string, cfg: MetricsBackfillConfig)
 export async function main() {
   const { name } = parseArgs(process.argv.slice(2));
 
-  const token = process.env.HIT_SERVICE_TOKEN;
-  if (!token) throw new Error('Missing HIT_SERVICE_TOKEN env var (required).');
+  const bearerToken = process.env.HIT_BEARER_TOKEN;
+  if (!bearerToken) throw new Error('Missing HIT_BEARER_TOKEN env var (required).');
 
   // Prefer HIT_APP_URL when explicitly set (internal cluster DNS), otherwise accept
   // HIT_APP_PUBLIC_URL which is injected by the app's tasks proxy for UI-triggered runs.
@@ -135,14 +135,20 @@ export async function main() {
 
   const defs = cfg.metrics?.definitions || {};
   if (Object.keys(defs).length > 0) {
-    await ensureDefinitions(baseUrl, token, defs);
+    await ensureDefinitions(baseUrl, bearerToken, defs);
   }
 
-  runBackfill(baseUrl, token, backfill);
+  runBackfill(baseUrl, bearerToken, backfill);
 }
 
 function stripTrailingSlash(url: string) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function normalizeBearer(raw: string): string {
+  const token = String(raw || '').trim();
+  if (!token) return '';
+  return token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
 }
 
 main().catch((err) => {

@@ -5,13 +5,20 @@ export type AuthContext =
   | { kind: 'user'; user: User }
   | { kind: 'service' };
 
+function isServiceTokenAuthorized(request: NextRequest): boolean {
+  const header =
+    request.headers.get('x-hit-service-token') || request.headers.get('X-HIT-Service-Token');
+  const expected = process.env.HIT_SERVICE_TOKEN;
+  if (!header || !expected) return false;
+  return String(header) === String(expected);
+}
+
 export function getAuthContext(request: NextRequest): AuthContext | null {
+  // Service tokens (internal service-to-service / CLI communication)
+  if (isServiceTokenAuthorized(request)) return { kind: 'service' };
+
   const user = extractUserFromRequest(request);
   if (user) return { kind: 'user', user };
-
-  const hdr = request.headers.get('x-hit-service-token') || request.headers.get('X-HIT-Service-Token');
-  const expected = process.env.HIT_SERVICE_TOKEN;
-  if (expected && hdr && hdr === expected) return { kind: 'service' };
 
   return null;
 }
@@ -23,7 +30,7 @@ export function getAuthContext(request: NextRequest): AuthContext | null {
 export function isAdminUser(request: NextRequest): boolean {
   const ctx = getAuthContext(request);
   if (!ctx) return false;
-  if (ctx.kind === 'service') return true; // Service tokens are trusted
+  if (ctx.kind !== 'user') return false;
   const roles = ctx.user.roles || [];
   return roles.some((r) => r.toLowerCase() === 'admin');
 }
@@ -44,9 +51,6 @@ export async function checkMetricPermissions(
 
   const ctx = getAuthContext(request);
   if (!ctx) return Object.fromEntries(metricKeys.map((k) => [k, false]));
-
-  // Service token bypasses individual checks (internal service-to-service communication)
-  if (ctx.kind === "service") return Object.fromEntries(metricKeys.map((k) => [k, true]));
 
   // Admin bypasses all checks. This is a UI/ops requirement: admins should never see "missing metrics".
   // NOTE: extractUserFromRequest() is a lightweight JWT payload decode (no signature verify) but
@@ -72,22 +76,12 @@ export async function checkMetricPermissions(
   const proto = request.headers.get("x-forwarded-proto") || "http";
   const frontendBaseUrl = host ? `${proto}://${host}` : "";
 
-  // IMPORTANT: auth module config lookup relies on the service token.
-  // Prefer forwarding the incoming platform header (so local/dev/prod behave consistently),
-  // then fall back to process env.
-  const serviceToken =
-    request.headers.get("x-hit-service-token") ||
-    request.headers.get("X-HIT-Service-Token") ||
-    process.env.HIT_SERVICE_TOKEN ||
-    "";
-
   try {
     const res = await fetch(`${authUrl.replace(/\/$/, "")}/permissions/metrics/check`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: bearer,
-        "X-HIT-Service-Token": serviceToken,
         "X-Frontend-Base-URL": frontendBaseUrl,
       },
       body: JSON.stringify(metricKeys),

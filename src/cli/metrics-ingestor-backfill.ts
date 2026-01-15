@@ -8,7 +8,7 @@
  * - list matching files in the configured directory
  * - (optionally) validate required mappings exist in metrics_links
  * - POST each file to: /api/metrics/ingestors/<id>/upload (multipart)
- *   using X-HIT-Service-Token
+ *   using Authorization: Bearer
  *
  * This keeps metrics-core dumb about CSV formats while still providing the
  * "heavy lifting" orchestration: discovery, validation, and execution.
@@ -41,7 +41,7 @@ type IngestorYaml = {
 type Args = {
   id: string;
   baseUrl: string;
-  serviceToken: string;
+  bearerToken: string;
   dryRun: boolean;
   validateOnly: boolean;
   overwrite: boolean;
@@ -50,19 +50,19 @@ type Args = {
 
 function parseArgs(argv: string[]): Args {
   // In production, tasks are typically triggered via the app and may receive HIT_APP_PUBLIC_URL
-  // (see app/api/proxy/tasks env injection). Prefer HIT_APP_URL when explicitly set, otherwise
+  // (see app/api/proxy/jobs env injection). Prefer HIT_APP_URL when explicitly set, otherwise
   // fall back to HIT_APP_PUBLIC_URL, and finally localhost on the common Next port.
   const portGuess = process.env.PORT || '3002';
   const baseUrl =
     process.env.HIT_APP_URL ||
     process.env.HIT_APP_PUBLIC_URL ||
     `http://localhost:${portGuess}`;
-  const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
+  const bearerToken = process.env.HIT_BEARER_TOKEN || '';
 
   const out: Args = {
     id: '',
     baseUrl,
-    serviceToken,
+    bearerToken,
     dryRun: false,
     validateOnly: false,
     // Backfills are intended to be re-runnable and to repair stale/incorrect ingests.
@@ -85,7 +85,7 @@ function parseArgs(argv: string[]): Args {
     if (a === '--id') out.id = next();
     else if (a.startsWith('--id=')) out.id = a.split('=')[1] || '';
     else if (a === '--base-url') out.baseUrl = next();
-    else if (a === '--service-token') out.serviceToken = next();
+    else if (a === '--bearer-token') out.bearerToken = next();
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--validate-only') out.validateOnly = true;
     else if (a === '--overwrite') out.overwrite = true;
@@ -94,12 +94,18 @@ function parseArgs(argv: string[]): Args {
   }
 
   if (!out.id.trim()) throw new Error('Missing --id <ingestorId>');
-  if (!out.serviceToken) throw new Error('Missing service token. Set HIT_SERVICE_TOKEN or pass --service-token');
+  if (!out.bearerToken) throw new Error('Missing bearer token. Set HIT_BEARER_TOKEN or pass --bearer-token');
   return out;
 }
 
 function stripTrailingSlash(url: string) {
   return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function normalizeBearer(raw: string): string {
+  const token = String(raw || '').trim();
+  if (!token) return '';
+  return token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
 }
 
 function sleep(ms: number) {
@@ -210,7 +216,7 @@ async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string
     const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/links?linkType=${encodeURIComponent(linkType)}&q=${encodeURIComponent(name)}&limit=500`;
     const { res, bodyText } = await fetchWithRetry(
       url,
-      { method: 'GET', headers: { 'X-HIT-Service-Token': args.serviceToken } },
+      { method: 'GET', headers: { Authorization: normalizeBearer(args.bearerToken) } },
     { retries: 20, baseDelayMs: 300 },
     );
     if (!res.ok) {
@@ -263,7 +269,7 @@ async function uploadOne(args: Args, ingestorId: string, filePath: string) {
   const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/ingestors/${encodeURIComponent(ingestorId)}/upload`;
   const { res, bodyText: text } = await fetchWithRetry(
     url,
-    { method: 'POST', headers: { 'X-HIT-Service-Token': args.serviceToken }, body: form },
+    { method: 'POST', headers: { Authorization: normalizeBearer(args.bearerToken) }, body: form },
     { retries: 20, baseDelayMs: 400 },
   );
   if (!res.ok) {

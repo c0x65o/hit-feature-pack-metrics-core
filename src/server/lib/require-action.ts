@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server';
 import type { ActionCheckResult } from '@hit/feature-pack-auth-core/server/lib/action-check';
 import {
   checkActionPermission,
@@ -6,15 +5,23 @@ import {
 } from '@hit/feature-pack-auth-core/server/lib/action-check';
 
 export async function checkMetricsCoreAction(
-  request: NextRequest,
+  request: Request,
   actionKey: string
 ): Promise<ActionCheckResult> {
-  return checkActionPermission(request, actionKey, { logPrefix: 'Metrics-Core' });
+  return checkActionPermission(
+    request as Parameters<typeof checkActionPermission>[0],
+    actionKey,
+    { logPrefix: 'Metrics-Core' }
+  );
 }
 
 export async function requireMetricsCoreAction(
-  request: NextRequest,
+  request: Request,
   actionKey: string
-): Promise<NextResponse | null> {
-  return requireActionPermission(request, actionKey, { logPrefix: 'Metrics-Core' });
+): Promise<Response | null> {
+  return requireActionPermission(
+    request as Parameters<typeof requireActionPermission>[0],
+    actionKey,
+    { logPrefix: 'Metrics-Core' }
+  );
 }
