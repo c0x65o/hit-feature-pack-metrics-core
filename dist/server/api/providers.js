@@ -32,11 +32,11 @@ function toIsoDateTime(input) {
 function appRoot() {
     return process.cwd();
 }
-function findIngestorsDir(startDir) {
+function findDirUp(startDir, rel) {
     const checked = [];
     let cur = startDir;
     for (let i = 0; i < 10; i++) {
-        const candidate = path.join(cur, '.hit', 'metrics', 'ingestors');
+        const candidate = path.join(cur, rel);
         checked.push(candidate);
         if (fs.existsSync(candidate))
             return { dir: candidate, checked };
@@ -47,19 +47,31 @@ function findIngestorsDir(startDir) {
     }
     return { dir: null, checked };
 }
-function ingestorsDir() {
-    const found = findIngestorsDir(appRoot());
-    return found.dir;
+function ingestorsDirs() {
+    // Preferred schema-driven location:
+    //   schema/metrics/ingestors/*.yaml
+    // Legacy fallback:
+    //   .hit/metrics/ingestors/*.yaml
+    const schemaFound = findDirUp(appRoot(), path.join('schema', 'metrics', 'ingestors'));
+    const hitFound = findDirUp(appRoot(), path.join('.hit', 'metrics', 'ingestors'));
+    const out = [schemaFound.dir, hitFound.dir].filter(Boolean);
+    return Array.from(new Set(out));
 }
 function listIngestorFiles() {
-    const dir = ingestorsDir();
-    if (!dir)
+    const dirs = ingestorsDirs();
+    if (!dirs.length)
         return [];
-    return fs
-        .readdirSync(dir, { withFileTypes: true })
-        .filter((e) => e.isFile() && (e.name.endsWith('.yaml') || e.name.endsWith('.yml')))
-        .map((e) => path.join(dir, e.name))
-        .sort((a, b) => a.localeCompare(b));
+    const out = [];
+    for (const dir of dirs) {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!e.isFile())
+                continue;
+            if (!e.name.endsWith('.yaml') && !e.name.endsWith('.yml'))
+                continue;
+            out.push(path.join(dir, e.name));
+        }
+    }
+    return out.sort((a, b) => a.localeCompare(b));
 }
 function loadIngestorFile(filePath) {
     const raw = fs.readFileSync(filePath, 'utf8');
@@ -69,13 +81,15 @@ function loadIngestorFile(filePath) {
     return cfg;
 }
 function loadAllIngestors() {
-    const out = [];
+    // Merge by id; schema wins over legacy on collisions.
+    const byId = new Map();
     for (const f of listIngestorFiles()) {
         const cfg = loadIngestorFile(f);
-        if (cfg)
-            out.push(cfg);
+        if (!cfg)
+            continue;
+        byId.set(cfg.id, cfg);
     }
-    return out;
+    return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 function loadHitYamlTasks() {
     const p = path.join(appRoot(), 'hit.yaml');

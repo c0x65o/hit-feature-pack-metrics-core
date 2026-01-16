@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm';
 type Bucket = 'none' | 'hour' | 'day' | 'week' | 'month';
 type Agg = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last';
 export type QueryBody = {
@@ -38,26 +39,31 @@ export type ComputedDrilldownResult = {
     error: string;
 };
 /**
- * Computed metrics:
- * - Used when a metric key is declared in the catalog but we don't have (or don't want) stored points.
- * - Must return the SAME shape as /api/metrics/query: rows with { bucket?, value, ...groupByKeys }.
+ * Computed metrics (feature-pack owned):
+ *
+ * metrics-core is intentionally pack-agnostic. Any computed-metric implementation
+ * must live in the owning feature pack and be registered/injected by the app.
+ *
+ * For now, we return null so callers fall back to stored points.
  */
-export declare function tryRunComputedMetricQuery(args: {
+export declare function tryRunComputedMetricQuery(_args: {
     db: any;
     body: QueryBody;
     catalogEntry?: any;
 }): Promise<ComputedQueryResult | null>;
 /**
- * Computed drilldown:
- * - Used by /api/metrics/drilldown when the metric has no stored points.
- * - Returns "point-like" rows so dashboard drilldown stays functional.
+ * Computed drilldown (feature-pack owned):
+ *
+ * When a metric has no stored points, /api/metrics/drilldown will try this.
+ * Returning null means "no computed drilldown available".
  */
-export declare function tryRunComputedMetricDrilldown(args: {
+export declare function tryRunComputedMetricDrilldown(_args: {
     db: any;
     pointFilter: QueryBody;
     page: number;
     pageSize: number;
     catalogEntry?: any;
 }): Promise<ComputedDrilldownResult | null>;
+export type _ComputedMetricsSqlBrand = SQL | null;
 export {};
 //# sourceMappingURL=computed-metrics.d.ts.map

@@ -38,72 +38,81 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 
 export function loadPartnerDefinitions(cwd = process.cwd()): PartnerDefinition[] {
-  const dir = path.join(cwd, '.hit', 'metrics', 'partners');
-  if (!fs.existsSync(dir)) return [];
+  // Preferred schema-driven location:
+  //   schema/metrics/partners/*.yaml
+  // Legacy fallback:
+  //   .hit/metrics/partners/*.yaml
+  const schemaDir = path.join(cwd, 'schema', 'metrics', 'partners');
+  const legacyDir = path.join(cwd, '.hit', 'metrics', 'partners');
+  const dirs = [schemaDir, legacyDir].filter((d) => fs.existsSync(d));
+  if (!dirs.length) return [];
 
-  const out: PartnerDefinition[] = [];
-  for (const entry of fs.readdirSync(dir)) {
-    if (!entry.endsWith('.yaml') && !entry.endsWith('.yml')) continue;
-    const filePath = path.join(dir, entry);
-    const raw = fs.readFileSync(filePath, 'utf8');
-    const parsed = yaml.load(raw) as unknown;
-    if (!isPlainObject(parsed)) continue;
+  // Merge by id; schema wins over legacy on collisions.
+  const byId = new Map<string, PartnerDefinition>();
+  for (const dir of dirs) {
+    for (const entry of fs.readdirSync(dir)) {
+      if (!entry.endsWith('.yaml') && !entry.endsWith('.yml')) continue;
+      const filePath = path.join(dir, entry);
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const parsed = yaml.load(raw) as unknown;
+      if (!isPlainObject(parsed)) continue;
 
-    const id = typeof parsed.id === 'string' ? parsed.id.trim() : '';
-    const label = typeof parsed.label === 'string' ? parsed.label.trim() : '';
-    if (!id || !label) continue;
+      const id = typeof parsed.id === 'string' ? parsed.id.trim() : '';
+      const label = typeof parsed.label === 'string' ? parsed.label.trim() : '';
+      if (!id || !label) continue;
 
-    const fieldsRaw = (parsed.fields as unknown) ?? [];
-    const fields: PartnerFieldDefinition[] = Array.isArray(fieldsRaw)
-      ? fieldsRaw
-          .map((f) => {
-            if (!isPlainObject(f)) return null;
-            const key = typeof f.key === 'string' ? f.key.trim() : '';
-            const flabel = typeof f.label === 'string' ? f.label.trim() : '';
-            const type = typeof f.type === 'string' ? (f.type.trim() as PartnerFieldType) : 'text';
-            if (!key || !flabel) return null;
-            if (!['text', 'secret', 'number', 'json'].includes(type)) return null;
-            return {
-              key,
-              label: flabel,
-              type,
-              required: f.required === true,
-              description: typeof f.description === 'string' ? f.description : undefined,
-            } satisfies PartnerFieldDefinition;
-          })
-          .filter(Boolean) as PartnerFieldDefinition[]
-      : [];
+      const fieldsRaw = (parsed.fields as unknown) ?? [];
+      const fields: PartnerFieldDefinition[] = Array.isArray(fieldsRaw)
+        ? fieldsRaw
+            .map((f) => {
+              if (!isPlainObject(f)) return null;
+              const key = typeof f.key === 'string' ? f.key.trim() : '';
+              const flabel = typeof f.label === 'string' ? f.label.trim() : '';
+              const type = typeof f.type === 'string' ? (f.type.trim() as PartnerFieldType) : 'text';
+              if (!key || !flabel) return null;
+              if (!['text', 'secret', 'number', 'json'].includes(type)) return null;
+              return {
+                key,
+                label: flabel,
+                type,
+                required: f.required === true,
+                description: typeof f.description === 'string' ? f.description : undefined,
+              } satisfies PartnerFieldDefinition;
+            })
+            .filter(Boolean) as PartnerFieldDefinition[]
+        : [];
 
-    const verifyRaw = (parsed.verify as unknown) ?? undefined;
-    let verify: PartnerVerifyConfig | undefined;
-    if (isPlainObject(verifyRaw) && typeof verifyRaw.kind === 'string') {
-      if (verifyRaw.kind === 'http' && typeof verifyRaw.url === 'string') {
-        verify = {
-          kind: 'http',
-          method: (verifyRaw.method === 'POST' ? 'POST' : 'GET') as 'GET' | 'POST',
-          url: verifyRaw.url,
-          headers: isPlainObject(verifyRaw.headers) ? (verifyRaw.headers as Record<string, string>) : undefined,
-        };
+      const verifyRaw = (parsed.verify as unknown) ?? undefined;
+      let verify: PartnerVerifyConfig | undefined;
+      if (isPlainObject(verifyRaw) && typeof verifyRaw.kind === 'string') {
+        if (verifyRaw.kind === 'http' && typeof verifyRaw.url === 'string') {
+          verify = {
+            kind: 'http',
+            method: (verifyRaw.method === 'POST' ? 'POST' : 'GET') as 'GET' | 'POST',
+            url: verifyRaw.url,
+            headers: isPlainObject(verifyRaw.headers) ? (verifyRaw.headers as Record<string, string>) : undefined,
+          };
+        }
+        if (verifyRaw.kind === 'command' && typeof verifyRaw.command === 'string') {
+          verify = {
+            kind: 'command',
+            command: verifyRaw.command,
+            envPrefix: typeof verifyRaw.envPrefix === 'string' ? verifyRaw.envPrefix : undefined,
+          };
+        }
       }
-      if (verifyRaw.kind === 'command' && typeof verifyRaw.command === 'string') {
-        verify = {
-          kind: 'command',
-          command: verifyRaw.command,
-          envPrefix: typeof verifyRaw.envPrefix === 'string' ? verifyRaw.envPrefix : undefined,
-        };
-      }
+
+      byId.set(id, {
+        id,
+        label,
+        description: typeof parsed.description === 'string' ? parsed.description : undefined,
+        fields,
+        verify,
+      });
     }
-
-    out.push({
-      id,
-      label,
-      description: typeof parsed.description === 'string' ? parsed.description : undefined,
-      fields,
-      verify,
-    });
   }
 
-  return out.sort((a, b) => a.id.localeCompare(b.id));
+  return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function interpolateTemplate(template: string, creds: Record<string, unknown>) {
