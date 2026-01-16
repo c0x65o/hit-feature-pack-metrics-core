@@ -260,7 +260,7 @@ export function Definitions() {
 
       <Card
         title={`Configured metrics (${filteredItems.length}${filteredItems.length !== items.length ? ` of ${items.length}` : ''})`}
-        description="Read-only. Configure metrics via feature-pack.yaml or .hit/metrics/definitions and run `hit run`."
+        description="Read-only. Configure metrics via feature-pack.yaml or schema/metrics/definitions and run `hit run`."
       >
         {loading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>

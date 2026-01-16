@@ -29,11 +29,23 @@ function getAuthBaseUrlFromRequest(request: NextRequest): string {
 }
 
 function isServiceTokenAuthorized(request: NextRequest): boolean {
-  const header =
-    request.headers.get('x-hit-service-token') || request.headers.get('X-HIT-Service-Token');
   const expected = process.env.HIT_SERVICE_TOKEN;
-  if (!header || !expected) return false;
-  return String(header) === String(expected);
+  if (!expected) return false;
+
+  // Preferred (explicit) service header.
+  const svcHeader =
+    request.headers.get('x-hit-service-token') || request.headers.get('X-HIT-Service-Token');
+  if (svcHeader && String(svcHeader) === String(expected)) return true;
+
+  // QoL / compatibility: allow the service token to be sent as a bearer token too.
+  // This lets background jobs use a single "bearer token" mechanism consistently.
+  const authHeader =
+    request.headers.get('authorization') || request.headers.get('Authorization') || '';
+  const auth = String(authHeader).trim();
+  if (!auth.toLowerCase().startsWith('bearer ')) return false;
+  const token = auth.slice('bearer '.length).trim();
+  if (!token) return false;
+  return token === String(expected);
 }
 
 export function getAuthContext(request: NextRequest): AuthContext | null {

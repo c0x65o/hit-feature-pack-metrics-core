@@ -42,11 +42,19 @@ type Args = {
   id: string;
   baseUrl: string;
   bearerToken: string;
+  serviceToken: string;
   dryRun: boolean;
   validateOnly: boolean;
   overwrite: boolean;
   failFast: boolean;
 };
+
+function buildAuthHeaders(args: Pick<Args, 'bearerToken' | 'serviceToken'>): Record<string, string> {
+  const serviceToken = String(args.serviceToken || '').trim();
+  const bearer = normalizeBearer(serviceToken || args.bearerToken);
+  if (bearer) return { Authorization: bearer };
+  return {};
+}
 
 function parseArgs(argv: string[]): Args {
   // In production, tasks are typically triggered via the app and may receive HIT_APP_PUBLIC_URL
@@ -58,11 +66,13 @@ function parseArgs(argv: string[]): Args {
     process.env.HIT_APP_PUBLIC_URL ||
     `http://localhost:${portGuess}`;
   const bearerToken = process.env.HIT_BEARER_TOKEN || '';
+  const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
 
   const out: Args = {
     id: '',
     baseUrl,
     bearerToken,
+    serviceToken,
     dryRun: false,
     validateOnly: false,
     // Backfills are intended to be re-runnable and to repair stale/incorrect ingests.
@@ -86,6 +96,7 @@ function parseArgs(argv: string[]): Args {
     else if (a.startsWith('--id=')) out.id = a.split('=')[1] || '';
     else if (a === '--base-url') out.baseUrl = next();
     else if (a === '--bearer-token') out.bearerToken = next();
+    else if (a === '--service-token') out.serviceToken = next();
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--validate-only') out.validateOnly = true;
     else if (a === '--overwrite') out.overwrite = true;
@@ -94,7 +105,11 @@ function parseArgs(argv: string[]): Args {
   }
 
   if (!out.id.trim()) throw new Error('Missing --id <ingestorId>');
-  if (!out.bearerToken) throw new Error('Missing bearer token. Set HIT_BEARER_TOKEN or pass --bearer-token');
+  if (!String(out.bearerToken || '').trim() && !String(out.serviceToken || '').trim()) {
+    throw new Error(
+      'Missing auth token. Set HIT_BEARER_TOKEN or HIT_SERVICE_TOKEN (recommended for background jobs), or pass --bearer-token / --service-token',
+    );
+  }
   return out;
 }
 
@@ -216,8 +231,8 @@ async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string
     const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/links?linkType=${encodeURIComponent(linkType)}&q=${encodeURIComponent(name)}&limit=500`;
     const { res, bodyText } = await fetchWithRetry(
       url,
-      { method: 'GET', headers: { Authorization: normalizeBearer(args.bearerToken) } },
-    { retries: 20, baseDelayMs: 300 },
+      { method: 'GET', headers: buildAuthHeaders(args) },
+      { retries: 20, baseDelayMs: 300 },
     );
     if (!res.ok) {
       // Next dev server can temporarily return HTML 404/500 while recompiling.
@@ -269,7 +284,7 @@ async function uploadOne(args: Args, ingestorId: string, filePath: string) {
   const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/ingestors/${encodeURIComponent(ingestorId)}/upload`;
   const { res, bodyText: text } = await fetchWithRetry(
     url,
-    { method: 'POST', headers: { Authorization: normalizeBearer(args.bearerToken) }, body: form },
+    { method: 'POST', headers: buildAuthHeaders(args), body: form },
     { retries: 20, baseDelayMs: 400 },
   );
   if (!res.ok) {

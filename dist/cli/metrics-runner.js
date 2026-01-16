@@ -20,10 +20,17 @@
  *     -- -- uv run --with "psycopg[binary]" python .hit/tasks/my-script-that-emits-points.py
  */
 import { spawn } from 'node:child_process';
+function buildAuthHeaders(args) {
+    const serviceToken = String(args.serviceToken || '').trim();
+    const bearer = normalizeBearer(serviceToken || args.bearerToken);
+    if (bearer)
+        return { Authorization: bearer };
+    return {};
+}
 async function main() {
     const parsed = parseArgs(process.argv.slice(2));
-    if (!parsed.bearerToken) {
-        throw new Error('Missing bearer token. Set HIT_BEARER_TOKEN or pass --bearer-token');
+    if (!String(parsed.bearerToken || '').trim() && !String(parsed.serviceToken || '').trim()) {
+        throw new Error('Missing auth token. Set HIT_BEARER_TOKEN or HIT_SERVICE_TOKEN (recommended for background jobs), or pass --bearer-token / --service-token');
     }
     if (!parsed.command) {
         throw new Error('Missing command. Use -- <command ...args>');
@@ -60,7 +67,7 @@ async function main() {
         if (!p.date)
             throw new Error('Point missing date');
     }
-    await ingestPoints(parsed.baseUrl, parsed.bearerToken, {
+    await ingestPoints(parsed.baseUrl, { bearerToken: parsed.bearerToken, serviceToken: parsed.serviceToken }, {
         id: dataSourceId,
         entityKind: parsed.entityKind,
         entityId: parsed.entityId,
@@ -79,9 +86,11 @@ function parseArgs(argv) {
         process.env.HIT_APP_PUBLIC_URL ||
         `http://localhost:${portGuess}`;
     const bearerToken = process.env.HIT_BEARER_TOKEN || '';
+    const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
     const out = {
         baseUrl,
         bearerToken,
+        serviceToken,
     };
     const sepIdx = argv.indexOf('--');
     const opts = sepIdx === -1 ? argv : argv.slice(0, sepIdx);
@@ -99,6 +108,8 @@ function parseArgs(argv) {
             out.baseUrl = next();
         else if (a === '--bearer-token')
             out.bearerToken = next();
+        else if (a === '--service-token')
+            out.serviceToken = next();
         else if (a === '--data-source-id')
             out.dataSourceId = next();
         else if (a === '--entity-kind')
@@ -117,6 +128,7 @@ function parseArgs(argv) {
     return {
         baseUrl: out.baseUrl,
         bearerToken: out.bearerToken,
+        serviceToken: out.serviceToken,
         dataSourceId: out.dataSourceId,
         entityKind: out.entityKind,
         entityId: out.entityId,
@@ -127,16 +139,16 @@ function parseArgs(argv) {
         commandArgs: cmd.slice(1),
     };
 }
-async function ingestPoints(baseUrl, bearerToken, dataSource, points) {
+async function ingestPoints(baseUrl, auth, dataSource, points) {
     if (!dataSource.entityKind || !dataSource.entityId || !dataSource.connectorKey || !dataSource.sourceKind) {
         throw new Error('Missing entityKind/entityId/connectorKey/sourceKind (required to ingest with dataSource).');
     }
-    const authHeader = normalizeBearer(bearerToken);
+    const authHeaders = buildAuthHeaders(auth);
     const res = await fetch(`${stripTrailingSlash(baseUrl)}/api/metrics/ingest`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: authHeader,
+            ...authHeaders,
         },
         body: JSON.stringify({
             dataSource: {
@@ -194,14 +206,21 @@ function runCommand(cmd, args, env) {
         });
         let stdout = '';
         let stderr = '';
-        child.stdout.on('data', (d) => {
-            stdout += d.toString();
-            process.stdout.write(d);
-        });
-        child.stderr.on('data', (d) => {
-            stderr += d.toString();
-            process.stderr.write(d);
-        });
+        const onStdout = (d) => {
+            const s = String(d ?? '');
+            stdout += s;
+            process.stdout.write(s);
+        };
+        const onStderr = (d) => {
+            const s = String(d ?? '');
+            stderr += s;
+            process.stderr.write(s);
+        };
+        // Some spawn implementations may not expose stdout/stderr in type stubs.
+        if (child.stdout)
+            child.stdout.on('data', onStdout);
+        if (child.stderr)
+            child.stderr.on('data', onStderr);
         child.on('error', (err) => reject(err));
         child.on('close', (code) => {
             if (code === 0)

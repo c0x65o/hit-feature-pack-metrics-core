@@ -20,13 +20,20 @@ function parseArgs(argv) {
     }
     return { name };
 }
-async function ensureDefinitions(baseUrl, bearerToken, defs) {
+function buildAuthHeaders(input) {
+    const serviceToken = String(input.serviceToken || '').trim();
+    const bearer = normalizeBearer(serviceToken || String(input.bearerToken || ''));
+    if (bearer)
+        return { Authorization: bearer };
+    return {};
+}
+async function ensureDefinitions(baseUrl, auth, defs) {
     for (const [key, cfg] of Object.entries(defs)) {
         const res = await fetch(`${stripTrailingSlash(baseUrl)}/api/metrics/definitions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                Authorization: normalizeBearer(bearerToken),
+                ...buildAuthHeaders(auth),
             },
             body: JSON.stringify({
                 key,
@@ -46,7 +53,7 @@ async function ensureDefinitions(baseUrl, bearerToken, defs) {
         }
     }
 }
-function runBackfill(baseUrl, bearerToken, cfg) {
+function runBackfill(baseUrl, auth, cfg) {
     const runnerPath = path.join(process.cwd(), 'node_modules', '@hit', 'feature-pack-metrics-core', 'dist', 'cli', 'metrics-runner.js');
     if (!fs.existsSync(runnerPath)) {
         throw new Error(`metrics-runner not found at ${runnerPath}. Did you npm install?`);
@@ -55,8 +62,6 @@ function runBackfill(baseUrl, bearerToken, cfg) {
         runnerPath,
         '--base-url',
         baseUrl,
-        '--bearer-token',
-        bearerToken,
         '--data-source-id',
         cfg.data_source_id,
         '--entity-kind',
@@ -71,6 +76,14 @@ function runBackfill(baseUrl, bearerToken, cfg) {
     if (cfg.external_ref) {
         args.push('--external-ref', cfg.external_ref);
     }
+    const bearerToken = String(auth.bearerToken || '').trim();
+    const serviceToken = String(auth.serviceToken || '').trim();
+    if (serviceToken)
+        args.splice(3, 0, '--service-token', serviceToken);
+    else if (bearerToken)
+        args.splice(3, 0, '--bearer-token', bearerToken);
+    else
+        throw new Error('Missing auth token for metrics-runner');
     args.push('--', 'bash', '-lc', cfg.command);
     const result = spawnSync('node', args, { stdio: 'inherit', env: process.env });
     if (result.status !== 0) {
@@ -79,9 +92,11 @@ function runBackfill(baseUrl, bearerToken, cfg) {
 }
 export async function main() {
     const { name } = parseArgs(process.argv.slice(2));
-    const bearerToken = process.env.HIT_BEARER_TOKEN;
-    if (!bearerToken)
-        throw new Error('Missing HIT_BEARER_TOKEN env var (required).');
+    const bearerToken = process.env.HIT_BEARER_TOKEN || '';
+    const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
+    if (!String(bearerToken).trim() && !String(serviceToken).trim()) {
+        throw new Error('Missing auth token. Set HIT_BEARER_TOKEN or HIT_SERVICE_TOKEN (recommended for background jobs).');
+    }
     // Prefer HIT_APP_URL when explicitly set (internal cluster DNS), otherwise accept
     // HIT_APP_PUBLIC_URL which is injected by the app's tasks proxy for UI-triggered runs.
     const portGuess = process.env.PORT || '3002';
@@ -96,9 +111,9 @@ export async function main() {
         throw new Error(`Backfill not found: metrics.backfills.${name}`);
     const defs = cfg.metrics?.definitions || {};
     if (Object.keys(defs).length > 0) {
-        await ensureDefinitions(baseUrl, bearerToken, defs);
+        await ensureDefinitions(baseUrl, { bearerToken, serviceToken }, defs);
     }
-    runBackfill(baseUrl, bearerToken, backfill);
+    runBackfill(baseUrl, { bearerToken, serviceToken }, backfill);
 }
 function stripTrailingSlash(url) {
     return url.endsWith('/') ? url.slice(0, -1) : url;

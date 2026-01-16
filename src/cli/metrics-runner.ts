@@ -25,6 +25,7 @@ import { spawn } from 'node:child_process';
 type RunnerArgs = {
   baseUrl: string;
   bearerToken: string;
+  serviceToken: string;
   dataSourceId?: string;
   entityKind?: string;
   entityId?: string;
@@ -34,6 +35,13 @@ type RunnerArgs = {
   command: string;
   commandArgs: string[];
 };
+
+function buildAuthHeaders(args: Pick<RunnerArgs, 'bearerToken' | 'serviceToken'>): Record<string, string> {
+  const serviceToken = String(args.serviceToken || '').trim();
+  const bearer = normalizeBearer(serviceToken || args.bearerToken);
+  if (bearer) return { Authorization: bearer };
+  return {};
+}
 
 type Point = {
   entityKind?: string;
@@ -51,8 +59,10 @@ type Point = {
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
 
-  if (!parsed.bearerToken) {
-    throw new Error('Missing bearer token. Set HIT_BEARER_TOKEN or pass --bearer-token');
+  if (!String(parsed.bearerToken || '').trim() && !String(parsed.serviceToken || '').trim()) {
+    throw new Error(
+      'Missing auth token. Set HIT_BEARER_TOKEN or HIT_SERVICE_TOKEN (recommended for background jobs), or pass --bearer-token / --service-token',
+    );
   }
   if (!parsed.command) {
     throw new Error('Missing command. Use -- <command ...args>');
@@ -95,7 +105,7 @@ async function main() {
 
   await ingestPoints(
     parsed.baseUrl,
-    parsed.bearerToken,
+    { bearerToken: parsed.bearerToken, serviceToken: parsed.serviceToken },
     {
       id: dataSourceId,
       entityKind: parsed.entityKind,
@@ -132,10 +142,12 @@ function parseArgs(argv: string[]): RunnerArgs {
     process.env.HIT_APP_PUBLIC_URL ||
     `http://localhost:${portGuess}`;
   const bearerToken = process.env.HIT_BEARER_TOKEN || '';
+  const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
 
   const out: Omit<RunnerArgs, 'command' | 'commandArgs'> & { command?: string; commandArgs?: string[] } = {
     baseUrl,
     bearerToken,
+    serviceToken,
   };
 
   const sepIdx = argv.indexOf('--');
@@ -153,6 +165,7 @@ function parseArgs(argv: string[]): RunnerArgs {
 
     if (a === '--base-url') out.baseUrl = next();
     else if (a === '--bearer-token') out.bearerToken = next();
+    else if (a === '--service-token') out.serviceToken = next();
     else if (a === '--data-source-id') out.dataSourceId = next();
     else if (a === '--entity-kind') out.entityKind = next();
     else if (a === '--entity-id') out.entityId = next();
@@ -165,6 +178,7 @@ function parseArgs(argv: string[]): RunnerArgs {
   return {
     baseUrl: out.baseUrl!,
     bearerToken: out.bearerToken!,
+    serviceToken: out.serviceToken!,
     dataSourceId: out.dataSourceId,
     entityKind: out.entityKind,
     entityId: out.entityId,
@@ -178,7 +192,7 @@ function parseArgs(argv: string[]): RunnerArgs {
 
 async function ingestPoints(
   baseUrl: string,
-  bearerToken: string,
+  auth: Pick<RunnerArgs, 'bearerToken' | 'serviceToken'>,
   dataSource: {
     id: string;
     entityKind?: string;
@@ -193,12 +207,12 @@ async function ingestPoints(
   if (!dataSource.entityKind || !dataSource.entityId || !dataSource.connectorKey || !dataSource.sourceKind) {
     throw new Error('Missing entityKind/entityId/connectorKey/sourceKind (required to ingest with dataSource).');
   }
-  const authHeader = normalizeBearer(bearerToken);
+  const authHeaders = buildAuthHeaders(auth);
   const res = await fetch(`${stripTrailingSlash(baseUrl)}/api/metrics/ingest`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: authHeader,
+      ...authHeaders,
     },
     body: JSON.stringify({
       dataSource: {
@@ -257,17 +271,23 @@ function runCommand(cmd: string, args: string[], env: NodeJS.ProcessEnv): Promis
     let stdout = '';
     let stderr = '';
 
-    child.stdout.on('data', (d) => {
-      stdout += d.toString();
-      process.stdout.write(d);
-    });
-    child.stderr.on('data', (d) => {
-      stderr += d.toString();
-      process.stderr.write(d);
-    });
+    const onStdout = (d: unknown) => {
+      const s = String(d ?? '');
+      stdout += s;
+      process.stdout.write(s);
+    };
+    const onStderr = (d: unknown) => {
+      const s = String(d ?? '');
+      stderr += s;
+      process.stderr.write(s);
+    };
 
-    child.on('error', (err) => reject(err));
-    child.on('close', (code) => {
+    // Some spawn implementations may not expose stdout/stderr in type stubs.
+    if (child.stdout) child.stdout.on('data', onStdout);
+    if (child.stderr) child.stderr.on('data', onStderr);
+
+    child.on('error', (err: unknown) => reject(err));
+    child.on('close', (code: unknown) => {
       if (code === 0) return resolve(stdout);
       reject(new Error(`Command failed (exit ${code}). Stderr:\n${stderr}`));
     });

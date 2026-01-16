@@ -15,7 +15,6 @@
     "declarationMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/lib/db": ["./node_modules/@hit/feature-pack-stubs/dist/db"],
