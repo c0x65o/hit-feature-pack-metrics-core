@@ -6,7 +6,7 @@ export declare function POST(request: NextRequest): Promise<NextResponse<{
     error: string;
 }> | NextResponse<{
     data: any[];
-    meta: Record<string, any>;
+    meta: any;
 }> | NextResponse<{
     data: any;
     meta: {

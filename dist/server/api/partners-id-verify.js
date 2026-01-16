@@ -44,6 +44,9 @@ export async function POST(request, ctx) {
     let message = '';
     let details = null;
     if (def.verify.kind === 'http') {
+        if (!def.verify.url) {
+            return jsonError('HTTP verify requires a URL', 400);
+        }
         const url = interpolateTemplate(def.verify.url, creds);
         const headers = {};
         if (def.verify.headers) {
@@ -65,6 +68,9 @@ export async function POST(request, ctx) {
         }
     }
     else if (def.verify.kind === 'command') {
+        if (!def.verify.command) {
+            return jsonError('Command verify requires a command', 400);
+        }
         const envPrefix = def.verify.envPrefix || 'HIT_PARTNER_';
         const env = { ...process.env };
         env[`${envPrefix}ID`] = id;

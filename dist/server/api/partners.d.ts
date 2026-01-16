@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { type PartnerFieldDefinition } from '../lib/partners';
 export declare const dynamic = "force-dynamic";
 export declare const runtime = "nodejs";
 export declare function GET(request: NextRequest): Promise<NextResponse<{
@@ -8,8 +9,15 @@ export declare function GET(request: NextRequest): Promise<NextResponse<{
         id: string;
         label: string;
         description: string | null;
-        fields: import("../lib/partners").PartnerFieldDefinition[];
-        verify: import("../lib/partners").PartnerVerifyConfig | null;
+        fields: PartnerFieldDefinition[];
+        verify: {
+            kind: "http" | "command";
+            url?: string;
+            method?: string;
+            headers?: Record<string, string>;
+            command?: string;
+            envPrefix?: string;
+        } | null;
         configured: boolean;
         enabled: boolean;
         lastVerifiedAt: Date | null;

@@ -1,126 +1,64 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import * as yaml from 'js-yaml';
-
-export type PartnerFieldType = 'text' | 'secret' | 'number' | 'json';
+/**
+ * Partners module.
+ * 
+ * This module provides partner definitions for external integrations.
+ */
 
 export type PartnerFieldDefinition = {
   key: string;
   label: string;
-  type: PartnerFieldType;
+  type: 'text' | 'secret' | 'number' | 'json';
   required?: boolean;
   description?: string;
 };
-
-export type PartnerVerifyConfig =
-  | {
-      kind: 'http';
-      method?: 'GET' | 'POST';
-      url: string; // supports {{field_key}} interpolation
-      headers?: Record<string, string>; // supports {{field_key}} interpolation
-    }
-  | {
-      kind: 'command';
-      command: string; // executed via: bash -lc "<command>"
-      envPrefix?: string; // default: HIT_PARTNER_
-    };
 
 export type PartnerDefinition = {
   id: string;
   label: string;
   description?: string;
   fields: PartnerFieldDefinition[];
-  verify?: PartnerVerifyConfig;
+  verify?: {
+    kind: 'http' | 'command';
+    url?: string;
+    method?: string;
+    headers?: Record<string, string>;
+    command?: string;
+    envPrefix?: string;
+  };
 };
 
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === 'object' && !Array.isArray(v);
+/**
+ * Load partner definitions.
+ * Currently returns an empty array as a stub.
+ */
+export function loadPartnerDefinitions(): PartnerDefinition[] {
+  // Stub implementation: return empty array
+  // Applications can extend this by providing their own partner definitions
+  return [];
 }
 
-export function loadPartnerDefinitions(cwd = process.cwd()): PartnerDefinition[] {
-  // Preferred schema-driven location:
-  //   schema/metrics/partners/*.yaml
-  // Legacy fallback:
-  //   .hit/metrics/partners/*.yaml
-  const schemaDir = path.join(cwd, 'schema', 'metrics', 'partners');
-  const legacyDir = path.join(cwd, '.hit', 'metrics', 'partners');
-  const dirs = [schemaDir, legacyDir].filter((d) => fs.existsSync(d));
-  if (!dirs.length) return [];
-
-  // Merge by id; schema wins over legacy on collisions.
-  const byId = new Map<string, PartnerDefinition>();
-  for (const dir of dirs) {
-    for (const entry of fs.readdirSync(dir)) {
-      if (!entry.endsWith('.yaml') && !entry.endsWith('.yml')) continue;
-      const filePath = path.join(dir, entry);
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const parsed = yaml.load(raw) as unknown;
-      if (!isPlainObject(parsed)) continue;
-
-      const id = typeof parsed.id === 'string' ? parsed.id.trim() : '';
-      const label = typeof parsed.label === 'string' ? parsed.label.trim() : '';
-      if (!id || !label) continue;
-
-      const fieldsRaw = (parsed.fields as unknown) ?? [];
-      const fields: PartnerFieldDefinition[] = Array.isArray(fieldsRaw)
-        ? fieldsRaw
-            .map((f) => {
-              if (!isPlainObject(f)) return null;
-              const key = typeof f.key === 'string' ? f.key.trim() : '';
-              const flabel = typeof f.label === 'string' ? f.label.trim() : '';
-              const type = typeof f.type === 'string' ? (f.type.trim() as PartnerFieldType) : 'text';
-              if (!key || !flabel) return null;
-              if (!['text', 'secret', 'number', 'json'].includes(type)) return null;
-              return {
-                key,
-                label: flabel,
-                type,
-                required: f.required === true,
-                description: typeof f.description === 'string' ? f.description : undefined,
-              } satisfies PartnerFieldDefinition;
-            })
-            .filter(Boolean) as PartnerFieldDefinition[]
-        : [];
-
-      const verifyRaw = (parsed.verify as unknown) ?? undefined;
-      let verify: PartnerVerifyConfig | undefined;
-      if (isPlainObject(verifyRaw) && typeof verifyRaw.kind === 'string') {
-        if (verifyRaw.kind === 'http' && typeof verifyRaw.url === 'string') {
-          verify = {
-            kind: 'http',
-            method: (verifyRaw.method === 'POST' ? 'POST' : 'GET') as 'GET' | 'POST',
-            url: verifyRaw.url,
-            headers: isPlainObject(verifyRaw.headers) ? (verifyRaw.headers as Record<string, string>) : undefined,
-          };
-        }
-        if (verifyRaw.kind === 'command' && typeof verifyRaw.command === 'string') {
-          verify = {
-            kind: 'command',
-            command: verifyRaw.command,
-            envPrefix: typeof verifyRaw.envPrefix === 'string' ? verifyRaw.envPrefix : undefined,
-          };
-        }
-      }
-
-      byId.set(id, {
-        id,
-        label,
-        description: typeof parsed.description === 'string' ? parsed.description : undefined,
-        fields,
-        verify,
-      });
-    }
-  }
-
-  return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id));
-}
-
-export function interpolateTemplate(template: string, creds: Record<string, unknown>) {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
-    const v = creds[key];
-    if (v === null || v === undefined) return '';
-    return encodeURIComponent(String(v));
+/**
+ * Interpolate a template string with credential values.
+ * Replaces ${key} with the value from credentials[key].
+ */
+export function interpolateTemplate(template: string, credentials: Record<string, unknown>): string {
+  return template.replace(/\$\{([^}]+)\}/g, (match, key) => {
+    const value = credentials[key];
+    return value === null || value === undefined ? '' : String(value);
   });
 }
 
-
+/**
+ * Check which required fields are missing from credentials.
+ */
+export function missingRequiredFields(fields: PartnerFieldDefinition[], credentials: Record<string, unknown>): string[] {
+  const missing: string[] = [];
+  for (const field of fields) {
+    if (!field.required) continue;
+    const value = credentials[field.key];
+    if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) {
+      missing.push(field.key);
+    }
+  }
+  return missing;
+}

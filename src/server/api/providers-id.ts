@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getAuthContext } from '../lib/authz';
-import { loadPartnerDefinitions } from '../lib/partners';
+import { loadPartnerDefinitions, type PartnerDefinition, type PartnerFieldDefinition } from '../lib/partners';
 import { metricsDataSources, metricsLinks, metricsMetricPoints, metricsPartnerCredentials } from '@/lib/feature-pack-schemas';
 import { resolveMetricsCoreScopeMode } from '../lib/scope-mode';
 
@@ -302,14 +302,14 @@ export async function GET(request: NextRequest, ctx: { params: { id: string } })
   // integration details
   const partnerId = cfg.integration?.partner_id || null;
   const defs = loadPartnerDefinitions();
-  const partnerDef = partnerId ? defs.find((d) => d.id === partnerId) || null : null;
-  const requiredFields = partnerDef ? partnerDef.fields.filter((f) => !!f.required).map((f) => f.key) : [];
+  const partnerDef = partnerId ? defs.find((d: PartnerDefinition) => d.id === partnerId) || null : null;
+  const requiredFields = partnerDef ? partnerDef.fields.filter((f: PartnerFieldDefinition) => !!f.required).map((f: PartnerFieldDefinition) => f.key) : [];
   const credRows = partnerId
     ? await db.select().from(metricsPartnerCredentials).where(eq(metricsPartnerCredentials.id, partnerId)).limit(1)
     : [];
   const cred = credRows[0] ?? null;
   const missingFields = cred
-    ? requiredFields.filter((k) => {
+    ? requiredFields.filter((k: string) => {
         const v = (cred.credentials as any)?.[k];
         return v === null || v === undefined || (typeof v === 'string' && !v.trim());
       })

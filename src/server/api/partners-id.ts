@@ -15,7 +15,7 @@ function jsonError(message: string, status = 400) {
 
 function getPartnerOrThrow(id: string): PartnerDefinition {
   const defs = loadPartnerDefinitions();
-  const p = defs.find((d) => d.id === id);
+  const p = defs.find((d: PartnerDefinition) => d.id === id);
   if (!p) throw new Error(`Unknown partner: ${id}`);
   return p;
 }

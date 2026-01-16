@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { metricsPartnerCredentials } from '@/lib/feature-pack-schemas';
 import { getAuthContext } from '../lib/authz';
-import { loadPartnerDefinitions } from '../lib/partners';
+import { loadPartnerDefinitions, type PartnerDefinition, type PartnerFieldDefinition } from '../lib/partners';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,10 +43,10 @@ export async function GET(request: NextRequest) {
   }>;
   const byId = new Map<string, (typeof rows)[number]>(rows.map((r) => [r.id, r]));
 
-  const data = defs.map((d) => {
+  const data = defs.map((d: PartnerDefinition) => {
     const row = byId.get(d.id);
     const creds = (row as any)?.credentials && typeof (row as any).credentials === 'object' ? ((row as any).credentials as Record<string, unknown>) : {};
-    const missing = row ? missingRequiredFields(d.fields, creds) : d.fields.filter((f) => !!f.required).map((f) => f.key);
+    const missing = row ? missingRequiredFields(d.fields, creds) : d.fields.filter((f: PartnerFieldDefinition) => !!f.required).map((f: PartnerFieldDefinition) => f.key);
     return {
       id: d.id,
       label: d.label,
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
   });
 
   const orphans = rows
-    .filter((r) => !defs.some((d) => d.id === r.id))
+    .filter((r) => !defs.some((d: PartnerDefinition) => d.id === r.id))
     .map((r) => ({
       id: r.id,
       configured: true,

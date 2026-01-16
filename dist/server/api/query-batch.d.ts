@@ -31,7 +31,7 @@ export declare function POST(request: NextRequest): Promise<NextResponse<{
         error?: undefined;
     } | {
         data: any[];
-        meta: Record<string, any>;
+        meta: any;
         error?: undefined;
     } | {
         error: any;
