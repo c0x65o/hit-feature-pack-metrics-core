@@ -1,0 +1,18 @@
+entities:
+  # Minimal schema-driven entity declarations for pack readiness checks.
+  #
+  # Intentionally lightweight: these exist to declare `api.resource` and required
+  # security/authz blocks so the pack can be validated consistently.
+
+  metrics.provider:
+    api:
+      resource: providers
+    security:
+      list: { authz: { entity: providers, verb: read } }
+      detail: { authz: { entity: providers, verb: read } }
+      new: { authz: { entity: providers, verb: write } }
+      edit: { authz: { entity: providers, verb: write } }
+    fields:
+      id: { type: text, label: ID }
+      label: { type: text, label: Label }
+

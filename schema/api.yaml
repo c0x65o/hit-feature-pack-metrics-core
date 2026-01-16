@@ -1,0 +1,63 @@
+version: 1
+
+# Pack-owned "special" API routes (schema-visible).
+#
+# These are endpoints that are NOT the schema-generated CRUD routes derived from `entities.*.api.resource`.
+# They must be explicitly declared here so `hit schema validate` can enforce consistency and prevent drift.
+api:
+  routes:
+    - path: /api/metrics/providers/[id]/targets
+      methods: [GET]
+      handler: providers-id-targets
+      description: "Preview targets that a provider will process (config-driven)"
+
+    - path: /api/metrics/ingestors/[id]/upload
+      methods: [POST]
+      handler: ingestors-id-upload
+      description: "Upload a file for an ingestor (file_upload sources)"
+
+    - path: /api/metrics/partners/[id]/verify
+      methods: [POST]
+      handler: partners-id-verify
+      description: "Verify integration partner credentials using configured verify action"
+
+    - path: /api/metrics/segments/[key]
+      methods: [DELETE, GET, PUT]
+      handler: segments-key
+      description: "Get/update/delete a segment by key"
+
+    - path: /api/metrics/segments/evaluate
+      methods: [POST]
+      handler: segments-evaluate
+      description: "Evaluate segment membership for a single entity (boolean)"
+
+    - path: /api/metrics/segments/query
+      methods: [POST]
+      handler: segments-query
+      description: "Query segment members (paged entityIds list)"
+
+    - path: /api/metrics/segments/table-buckets
+      methods: [GET]
+      handler: segments-table-buckets
+      description: "List bucket segments linked to a tableId + columnKey (segment-owned table bucketing)"
+
+    - path: /api/metrics/segments/table-buckets/query
+      methods: [POST]
+      handler: segments-table-buckets
+      description: "Query bucket segment membership per bucket (counts + paged entityIds per bucket)"
+
+    - path: /api/metrics/segments/table-buckets/evaluate
+      methods: [POST]
+      handler: segments-table-buckets-evaluate
+      description: "Evaluate bucket column value for a set of entityIds (first-match wins)"
+
+    - path: /api/metrics/segments/table-metrics
+      methods: [GET]
+      handler: segments-table-metrics
+      description: "List computed metric columns linked to a tableId (metric-backed table columns)"
+
+    - path: /api/metrics/segments/table-metrics/evaluate
+      methods: [POST]
+      handler: segments-table-metrics
+      description: "Evaluate computed metric column values for a set of entityIds"
+

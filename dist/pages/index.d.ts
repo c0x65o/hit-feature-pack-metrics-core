@@ -1,11 +1,11 @@
-export { Dashboard } from './Dashboard';
-export { Definitions } from './Definitions';
-export { Providers } from './Providers';
-export { ProviderDetail } from './ProviderDetail';
-export { Integrations } from './Integrations';
-export { IntegrationDetail } from './IntegrationDetail';
-export { Mappings } from './Mappings';
-export { MappingsType } from './MappingsType';
-export { Segments } from './Segments';
-export { SegmentEdit } from './SegmentEdit';
+export { Dashboard } from '../ui/pages/Dashboard';
+export { Definitions } from '../ui/pages/Definitions';
+export { Providers } from '../ui/pages/Providers';
+export { ProviderDetail } from '../ui/pages/ProviderDetail';
+export { Integrations } from '../ui/pages/Integrations';
+export { IntegrationDetail } from '../ui/pages/IntegrationDetail';
+export { Mappings } from '../ui/pages/Mappings';
+export { MappingsType } from '../ui/pages/MappingsType';
+export { Segments } from '../ui/pages/Segments';
+export { SegmentEdit } from '../ui/pages/SegmentEdit';
 //# sourceMappingURL=index.d.ts.map
