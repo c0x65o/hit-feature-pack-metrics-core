@@ -5,6 +5,29 @@ export type AuthContext =
   | { kind: 'user'; user: User }
   | { kind: 'service' };
 
+function getExternalOriginFromRequest(request: NextRequest): string {
+  // Prefer an explicitly provided frontend base URL (some proxies strip/override host headers).
+  const explicit =
+    request.headers.get('x-frontend-base-url') || request.headers.get('X-Frontend-Base-URL') || '';
+  if (explicit && explicit.trim()) return explicit.trim().replace(/\/$/, '');
+
+  const hostRaw = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+  const protoRaw = request.headers.get('x-forwarded-proto') || 'http';
+
+  // Handle comma-separated values from chained proxies.
+  const host = String(hostRaw).split(',')[0]?.trim();
+  const proto = String(protoRaw).split(',')[0]?.trim() || 'http';
+
+  if (host) return `${proto}://${host}`;
+  return new URL(request.url).origin;
+}
+
+function getAuthBaseUrlFromRequest(request: NextRequest): string {
+  // Auth is app-local (Next.js API dispatcher under /api/auth).
+  const origin = getExternalOriginFromRequest(request);
+  return `${origin}/api/auth`.replace(/\/$/, '');
+}
+
 function isServiceTokenAuthorized(request: NextRequest): boolean {
   const header =
     request.headers.get('x-hit-service-token') || request.headers.get('X-HIT-Service-Token');
@@ -57,12 +80,7 @@ export async function checkMetricPermissions(
   // sufficient for gating UI visibility and avoiding lockout if auth module config/token wiring breaks.
   if (isAdminUser(request)) return Object.fromEntries(metricKeys.map((k) => [k, true]));
 
-  // Call auth module for decision
-  const authUrl = process.env.HIT_AUTH_URL || process.env.NEXT_PUBLIC_HIT_AUTH_URL;
-  if (!authUrl) {
-    console.warn("[metrics-core] HIT_AUTH_URL not configured; denying all metric access (fail closed).");
-    return Object.fromEntries(metricKeys.map((k) => [k, false]));
-  }
+  const authBaseUrl = getAuthBaseUrlFromRequest(request);
 
   const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
   const cookieToken = request.cookies.get("hit_token")?.value;
@@ -72,12 +90,10 @@ export async function checkMetricPermissions(
     return Object.fromEntries(metricKeys.map((k) => [k, false]));
   }
 
-  const host = request.headers.get("host") || "";
-  const proto = request.headers.get("x-forwarded-proto") || "http";
-  const frontendBaseUrl = host ? `${proto}://${host}` : "";
+  const frontendBaseUrl = getExternalOriginFromRequest(request);
 
   try {
-    const res = await fetch(`${authUrl.replace(/\/$/, "")}/permissions/metrics/check`, {
+    const res = await fetch(`${authBaseUrl}/permissions/metrics/check`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
