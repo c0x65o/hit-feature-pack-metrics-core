@@ -49,36 +49,18 @@ export function ProviderDetail() {
     const backfillTask = artifacts?.tasks?.backfill || null;
     const syncTask = artifacts?.tasks?.sync || null;
     const linkedProjects = artifacts?.linkedProjects || [];
-    const [runningTaskName, setRunningTaskName] = React.useState(null);
-    const [lastTriggeredExecutionId, setLastTriggeredExecutionId] = React.useState(null);
+    // Task execution via UI is not supported in the TypeScript-only architecture.
+    // Tasks are executed via the job worker or CLI tools.
+    const runningTaskName = null;
+    const lastTriggeredExecutionId = null;
     async function runTask(task) {
-        setRunningTaskName(task.name);
-        setError(null);
-        setLastTriggeredExecutionId(null);
+        // Keep the UI button but steer users to the correct workflow.
+        setError(`Task execution from the UI is not supported. Run this command from your terminal:\n${task.command}`);
         try {
-            const res = await fetch(`/api/proxy/jobs/hit/tasks/${encodeURIComponent(task.name)}/execute`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                // Virtual task definition: lets us run without requiring hit.yaml tasks entries.
-                body: JSON.stringify({
-                    triggered_by: 'manual',
-                    command: task.command,
-                    service_name: task.service_name || null,
-                }),
-            });
-            const json = (await res.json().catch(() => ({})));
-            if (!res.ok)
-                throw new Error(json?.detail || json?.error || `Failed to execute task: ${res.status}`);
-            if (json?.id)
-                setLastTriggeredExecutionId(String(json.id));
-            // refresh provider artifacts shortly after triggering
-            setTimeout(() => {
-                void load();
-            }, 1500);
+            await navigator.clipboard.writeText(task.command);
         }
-        finally {
-            setRunningTaskName(null);
+        catch {
+            // ignore
         }
     }
     const targetsPreviewEnabled = !!provider?.targets_preview;

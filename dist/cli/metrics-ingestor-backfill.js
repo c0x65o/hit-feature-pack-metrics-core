@@ -32,9 +32,8 @@ function buildAuthHeaders(args) {
     return {};
 }
 function parseArgs(argv) {
-    // In production, tasks are typically triggered via the app and may receive HIT_APP_PUBLIC_URL
-    // (see app/api/proxy/jobs env injection). Prefer HIT_APP_URL when explicitly set, otherwise
-    // fall back to HIT_APP_PUBLIC_URL, and finally localhost on the common Next port.
+    // Prefer HIT_APP_URL when explicitly set, otherwise fall back to HIT_APP_PUBLIC_URL,
+    // and finally localhost on the common Next port.
     const portGuess = process.env.PORT || '3002';
     const baseUrl = process.env.HIT_APP_URL ||
         process.env.HIT_APP_PUBLIC_URL ||

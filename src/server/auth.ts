@@ -18,12 +18,6 @@ export function extractUserFromRequest(request: NextRequest): User | null {
     }
   }
 
-  // Check x-user-id header (set by proxy in production)
-  const xUserId = request.headers.get('x-user-id');
-  if (xUserId) {
-    return { sub: xUserId, email: '' };
-  }
-
   if (!token) return null;
 
   try {

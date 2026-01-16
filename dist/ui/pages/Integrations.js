@@ -43,7 +43,7 @@ export function Integrations(props) {
             return _jsx(Badge, { variant: "error", children: "Verify failed" });
         return _jsx(Badge, { variant: "default", children: "Not verified" });
     };
-    return (_jsx(Page, { title: "Integrations", description: "Configure integration partner credentials (API keys, tokens) and optionally verify connectivity.", actions: _jsx(Button, { variant: "secondary", onClick: load, disabled: loading, children: "Refresh" }), children: _jsxs(Card, { children: [error && (_jsx("div", { style: { marginBottom: '12px', color: 'var(--hit-error, #ef4444)', fontSize: '14px' }, children: error })), _jsx(Table, { loading: loading, emptyMessage: "No partners configured. Add partner definitions under .hit/metrics/partners/*.yaml", columns: [
+    return (_jsx(Page, { title: "Integrations", description: "Configure integration partner credentials (API keys, tokens) and optionally verify connectivity.", actions: _jsx(Button, { variant: "secondary", onClick: load, disabled: loading, children: "Refresh" }), children: _jsxs(Card, { children: [error && (_jsx("div", { style: { marginBottom: '12px', color: 'var(--hit-error, #ef4444)', fontSize: '14px' }, children: error })), _jsx(Table, { loading: loading, emptyMessage: "No partners configured. Add partner definitions under schema/metrics/partners/*.yaml", columns: [
                         { key: 'label', label: 'Partner' },
                         { key: 'status', label: 'Status' },
                         { key: 'lastVerified', label: 'Last verified' },

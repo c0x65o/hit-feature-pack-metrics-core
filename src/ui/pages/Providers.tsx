@@ -127,7 +127,7 @@ export function Providers() {
         </div>
       ) : null}
 
-      <Card title={`Providers (${items.length})`} description="Configured from .hit/metrics/ingestors/*.yaml">
+      <Card title={`Providers (${items.length})`} description="Configured from schema/metrics/ingestors/*.yaml">
         {loading ? (
           <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
         ) : items.length === 0 ? (

@@ -67,7 +67,7 @@ export function Integrations(props: { onNavigate?: (path: string) => void }) {
 
         <Table
           loading={loading}
-          emptyMessage="No partners configured. Add partner definitions under .hit/metrics/partners/*.yaml"
+          emptyMessage="No partners configured. Add partner definitions under schema/metrics/partners/*.yaml"
           columns={[
             { key: 'label', label: 'Partner' },
             { key: 'status', label: 'Status' },
