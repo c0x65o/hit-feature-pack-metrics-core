@@ -16,6 +16,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as yaml from 'js-yaml';
+function normalizeDatabaseUrl(raw) {
+    // Normalize DATABASE_URL: strip SQLAlchemy driver suffix (e.g., postgresql+psycopg://)
+    // node-postgres expects plain postgresql://
+    return String(raw || '')
+        .trim()
+        .replace(/^postgresql\+\w+:\/\//, 'postgresql://')
+        .replace(/^postgres:\/\//, 'postgresql://');
+}
 function buildAuthHeaders(args) {
     const serviceToken = String(args.serviceToken || '').trim();
     const bearer = normalizeBearer(serviceToken || args.bearerToken);
@@ -144,6 +152,11 @@ async function fetchWithRetry(url, init, opts) {
     throw wrapped;
 }
 function ingestorYamlPath(ingestorId) {
+    // Schema-first (apps increasingly keep configs in schema/ and generate .hit at build time).
+    const schemaPath = path.join(process.cwd(), 'schema', 'metrics', 'ingestors', `${ingestorId}.yaml`);
+    if (fs.existsSync(schemaPath))
+        return schemaPath;
+    // Legacy runtime config dir.
     return path.join(process.cwd(), '.hit', 'metrics', 'ingestors', `${ingestorId}.yaml`);
 }
 function loadIngestorOrThrow(ingestorId) {
@@ -181,6 +194,46 @@ async function validateMappings(args, cfg, fileNames) {
     const mappingKey = mapping.key || 'exact_filename';
     if (mappingKey !== 'exact_filename')
         return;
+    // New simplified path: if we have DATABASE_URL, validate against the DB directly.
+    // This avoids depending on auth/scope/token plumbing for local jobs.
+    const dbUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
+    if (dbUrl) {
+        let pg = null;
+        try {
+            pg = require('pg');
+        }
+        catch {
+            pg = null;
+        }
+        if (pg?.Client) {
+            const client = new pg.Client({ connectionString: dbUrl });
+            await client.connect();
+            try {
+                // Check existence in chunks (Postgres has parameter limits; keep it safe).
+                const have = new Set();
+                const chunkSize = 500;
+                for (let i = 0; i < fileNames.length; i += chunkSize) {
+                    const chunk = fileNames.slice(i, i + chunkSize);
+                    const res = await client.query(`select link_id from metrics_links where link_type = $1 and link_id = any($2::text[])`, [linkType, chunk]);
+                    for (const r of res?.rows || []) {
+                        const id = String(r?.link_id || '').trim();
+                        if (id)
+                            have.add(id);
+                    }
+                }
+                const missing = fileNames.filter((n) => !have.has(n));
+                if (missing.length > 0) {
+                    throw new Error(`Missing required metrics_links mappings for ${missing.length} file(s).\n` +
+                        `Expected link_type="${linkType}" and link_id to match filenames exactly.\n` +
+                        missing.map((m) => `- ${m}`).join('\n'));
+                }
+                return;
+            }
+            finally {
+                await client.end().catch(() => { });
+            }
+        }
+    }
     const missing = [];
     for (const name of fileNames) {
         const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/links?linkType=${encodeURIComponent(linkType)}&q=${encodeURIComponent(name)}&limit=500`;
