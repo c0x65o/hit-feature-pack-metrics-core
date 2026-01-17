@@ -25,6 +25,84 @@ function resolveProjectSchemaName() {
         return cwdBase.replace(/-/g, '_');
     return '';
 }
+function parseEnvLineValue(raw) {
+    let value = raw.trim();
+    if (!value)
+        return '';
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+        value = value.slice(1, -1);
+    }
+    else {
+        const hashIdx = value.indexOf(' #');
+        if (hashIdx >= 0)
+            value = value.slice(0, hashIdx).trim();
+    }
+    return value;
+}
+function loadEnvFile(filePath) {
+    if (!fs.existsSync(filePath))
+        return {};
+    const out = {};
+    const raw = fs.readFileSync(filePath, 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#'))
+            continue;
+        const eq = trimmed.indexOf('=');
+        if (eq <= 0)
+            continue;
+        const key = trimmed.slice(0, eq).trim();
+        const value = parseEnvLineValue(trimmed.slice(eq + 1));
+        if (key && value)
+            out[key] = value;
+    }
+    return out;
+}
+function resolveDatabaseUrl() {
+    const keys = ['DATABASE_URL', 'DATABASE_URL_WEB', 'DATABASE_URL_API'];
+    for (const key of keys) {
+        const envVal = String(process.env[key] || '').trim();
+        if (envVal)
+            return envVal;
+    }
+    const cwd = process.cwd();
+    const envFiles = [
+        '.env.local',
+        '.env.development.local',
+        '.env.development',
+        '.env.production.local',
+        '.env.production',
+        '.env',
+    ];
+    for (const file of envFiles) {
+        const values = loadEnvFile(path.join(cwd, file));
+        for (const key of keys) {
+            if (values[key])
+                return values[key];
+        }
+    }
+    const provisionerPath = path.join(cwd, 'provisioner.secrets.json');
+    if (fs.existsSync(provisionerPath)) {
+        try {
+            const raw = JSON.parse(fs.readFileSync(provisionerPath, 'utf8') || '{}');
+            const namespaces = raw?.namespaces && typeof raw.namespaces === 'object' ? raw.namespaces : {};
+            for (const ns of Object.values(namespaces)) {
+                const dbs = ns?.database && typeof ns.database === 'object' ? ns.database : {};
+                for (const db of Object.values(dbs)) {
+                    const envKey = typeof db?.env === 'string' ? String(db.env).trim() : '';
+                    const url = typeof db?.url === 'string' ? String(db.url).trim() : '';
+                    if (envKey && url && keys.includes(envKey))
+                        return url;
+                }
+            }
+        }
+        catch {
+            // ignore JSON parse errors
+        }
+    }
+    return '';
+}
 function normalizeDatabaseUrl(raw) {
     // Normalize DATABASE_URL: strip SQLAlchemy driver suffix (e.g., postgresql+psycopg://)
     // node-postgres expects plain postgresql://
@@ -294,7 +372,7 @@ async function validateMappings(args, cfg, fileNames) {
         return;
     // New simplified path: if we have DATABASE_URL, validate against the DB directly.
     // This avoids depending on auth/scope/token plumbing for local jobs.
-    const dbUrl = normalizeDatabaseUrl(process.env.DATABASE_URL || '');
+    const dbUrl = normalizeDatabaseUrl(resolveDatabaseUrl());
     if (dbUrl) {
         let pg = null;
         try {
