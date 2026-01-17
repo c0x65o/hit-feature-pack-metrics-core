@@ -99,6 +99,14 @@ function resolveDatabaseUrl(): string {
   return '';
 }
 
+async function loadPgModule(): Promise<any | null> {
+  try {
+    return await import('pg');
+  } catch {
+    return null;
+  }
+}
+
 function normalizeDatabaseUrl(raw: string): string {
   // Normalize DATABASE_URL: strip SQLAlchemy driver suffix (e.g., postgresql+psycopg://)
   // node-postgres expects plain postgresql://
@@ -422,12 +430,7 @@ async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string
   // This avoids depending on auth/scope/token plumbing for local jobs.
   const dbUrl = normalizeDatabaseUrl(resolveDatabaseUrl());
   if (dbUrl) {
-    let pg: any = null;
-    try {
-      pg = require('pg');
-    } catch {
-      pg = null;
-    }
+    const pg = await loadPgModule();
     if (pg?.Client) {
       const client = new pg.Client({ connectionString: dbUrl });
       await client.connect();

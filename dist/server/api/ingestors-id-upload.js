@@ -38,11 +38,9 @@ function ingestorsDir() {
     const found = findIngestorsDir(appRoot());
     return found.dir;
 }
-function loadIngestorOrThrow(id) {
-    const { dir, checked } = findIngestorsDir(appRoot());
-    if (!dir) {
-        throw new Error(`Ingestors directory not found. Checked:\n` + checked.map((p) => `- ${p}`).join('\n'));
-    }
+function loadIngestorFromDir(dir, id) {
+    if (!fs.existsSync(dir))
+        return null;
     const files = fs
         .readdirSync(dir, { withFileTypes: true })
         .filter((e) => e.isFile() && (e.name.endsWith('.yaml') || e.name.endsWith('.yml')))
@@ -53,7 +51,26 @@ function loadIngestorOrThrow(id) {
         if (cfg?.id === id)
             return cfg;
     }
-    throw new Error(`Unknown ingestor: ${id}`);
+    return null;
+}
+function loadIngestorOrThrow(id) {
+    const checked = [];
+    const schemaDir = path.join(appRoot(), 'schema', 'metrics', 'ingestors');
+    checked.push(schemaDir);
+    const schemaCfg = loadIngestorFromDir(schemaDir, id);
+    if (schemaCfg)
+        return schemaCfg;
+    const found = findIngestorsDir(appRoot());
+    if (found.dir) {
+        checked.push(found.dir);
+        const cfg = loadIngestorFromDir(found.dir, id);
+        if (cfg)
+            return cfg;
+    }
+    else {
+        checked.push(...found.checked);
+    }
+    throw new Error(`Ingestors directory not found. Checked:\n` + checked.map((p) => `- ${p}`).join('\n'));
 }
 function parseCSVLine(line) {
     const values = [];

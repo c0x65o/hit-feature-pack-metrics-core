@@ -103,6 +103,14 @@ function resolveDatabaseUrl() {
     }
     return '';
 }
+async function loadPgModule() {
+    try {
+        return await import('pg');
+    }
+    catch {
+        return null;
+    }
+}
 function normalizeDatabaseUrl(raw) {
     // Normalize DATABASE_URL: strip SQLAlchemy driver suffix (e.g., postgresql+psycopg://)
     // node-postgres expects plain postgresql://
@@ -374,13 +382,7 @@ async function validateMappings(args, cfg, fileNames) {
     // This avoids depending on auth/scope/token plumbing for local jobs.
     const dbUrl = normalizeDatabaseUrl(resolveDatabaseUrl());
     if (dbUrl) {
-        let pg = null;
-        try {
-            pg = require('pg');
-        }
-        catch {
-            pg = null;
-        }
+        const pg = await loadPgModule();
         if (pg?.Client) {
             const client = new pg.Client({ connectionString: dbUrl });
             await client.connect();
