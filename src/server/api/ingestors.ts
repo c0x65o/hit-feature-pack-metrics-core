@@ -20,9 +20,13 @@ function findIngestorsDir(startDir: string): { dir: string | null; checked: stri
   const checked: string[] = [];
   let cur = startDir;
   for (let i = 0; i < 10; i++) {
+    // Check both .hit/metrics/ingestors (legacy) and schema/metrics/ingestors (new)
     const candidate = path.join(cur, '.hit', 'metrics', 'ingestors');
     checked.push(candidate);
     if (fs.existsSync(candidate)) return { dir: candidate, checked };
+    const candidateSchema = path.join(cur, 'schema', 'metrics', 'ingestors');
+    checked.push(candidateSchema);
+    if (fs.existsSync(candidateSchema)) return { dir: candidateSchema, checked };
     const parent = path.dirname(cur);
     if (!parent || parent === cur) break;
     cur = parent;

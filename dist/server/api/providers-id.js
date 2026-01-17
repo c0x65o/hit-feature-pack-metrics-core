@@ -52,12 +52,20 @@ function findBackfillTask(ingestorId, tasks) {
 function ingestorYamlPath(id) {
     let cur = appRoot();
     for (let i = 0; i < 10; i++) {
+        // Check .hit/metrics/ingestors first (legacy location)
         const candidate = path.join(cur, '.hit', 'metrics', 'ingestors', `${id}.yaml`);
         if (fs.existsSync(candidate))
             return candidate;
         const candidate2 = path.join(cur, '.hit', 'metrics', 'ingestors', `${id}.yml`);
         if (fs.existsSync(candidate2))
             return candidate2;
+        // Check schema/metrics/ingestors (new location)
+        const candidate3 = path.join(cur, 'schema', 'metrics', 'ingestors', `${id}.yaml`);
+        if (fs.existsSync(candidate3))
+            return candidate3;
+        const candidate4 = path.join(cur, 'schema', 'metrics', 'ingestors', `${id}.yml`);
+        if (fs.existsSync(candidate4))
+            return candidate4;
         const parent = path.dirname(cur);
         if (!parent || parent === cur)
             break;
