@@ -27,6 +27,33 @@ function normalizeDatabaseUrl(raw: string): string {
     .replace(/^postgres:\/\//, 'postgresql://');
 }
 
+type ServiceTokensFile = Record<string, string>;
+
+function loadServiceTokensFromFile(): ServiceTokensFile | null {
+  const p = path.join(process.cwd(), '.hit', 'service_tokens.json');
+  if (!fs.existsSync(p)) return null;
+  try {
+    const raw = fs.readFileSync(p, 'utf8');
+    const parsed = JSON.parse(raw || '{}');
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as ServiceTokensFile;
+  } catch {
+    return null;
+  }
+}
+
+function resolveServiceToken(): string {
+  const envToken = String(process.env.HIT_SERVICE_TOKEN || '').trim();
+  if (envToken) return envToken;
+  const tokens = loadServiceTokensFromFile();
+  if (!tokens) return '';
+  const serviceName = String(process.env.HIT_SERVICE_NAME || '').trim();
+  if (serviceName && typeof tokens[serviceName] === 'string') return String(tokens[serviceName] || '').trim();
+  if (typeof tokens.web === 'string') return String(tokens.web || '').trim();
+  const first = Object.values(tokens).find((v) => typeof v === 'string' && String(v).trim());
+  return first ? String(first).trim() : '';
+}
+
 type IngestorYaml = {
   id: string;
   label?: string;
@@ -74,7 +101,7 @@ function parseArgs(argv: string[]): Args {
     process.env.HIT_APP_PUBLIC_URL ||
     `http://localhost:${portGuess}`;
   const bearerToken = process.env.HIT_BEARER_TOKEN || '';
-  const serviceToken = process.env.HIT_SERVICE_TOKEN || '';
+  const serviceToken = resolveServiceToken();
 
   const out: Args = {
     id: '',
@@ -229,6 +256,57 @@ function listFiles(dirAbs: string, pattern: string): string[] {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function missingMappingsError(linkType: string, missing: string[]) {
+  return new Error(
+    `Missing required metrics_links mappings for ${missing.length} file(s).\n` +
+      `Expected link_type="${linkType}" and link_id to match filenames exactly.\n` +
+      `If these should be seeded, run the app seed task (hit run task seed) or hit db seed --yes.\n` +
+      missing.map((m) => `- ${m}`).join('\n'),
+  );
+}
+
+async function validateMappingsViaApi(args: Args, linkType: string, fileNames: string[]) {
+  const missing: string[] = [];
+  for (const name of fileNames) {
+    const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/links?linkType=${encodeURIComponent(linkType)}&q=${encodeURIComponent(name)}&limit=500`;
+    const { res, bodyText } = await fetchWithRetry(
+      url,
+      { method: 'GET', headers: buildAuthHeaders(args) },
+      { retries: 20, baseDelayMs: 300 },
+    );
+    if (!res.ok) {
+      // Next dev server can temporarily return HTML 404/500 while recompiling.
+      // In that case, skip validation and let the upload step be the source of truth.
+      if (looksLikeNextTransientHtml(bodyText)) {
+        console.warn(
+          `Warning: skipping mapping validation because ${url} returned ${res.status} during a transient Next build/reload.\n` +
+            `Uploads will still enforce mapping targets server-side.`,
+        );
+        return { missing: [], skipped: true };
+      }
+      // This usually indicates the app server isn't running (or its dev build is broken),
+      // because this CLI relies on the app's API endpoints.
+      throw new Error(
+        `Mapping validation failed (${res.status}) for ${url}\n` +
+          `Make sure the hit-dashboard web server is running and healthy, then re-run this task.\n` +
+          `Response body:\n${bodyText}`,
+      );
+    }
+    const json = (() => {
+      try {
+        return JSON.parse(bodyText);
+      } catch {
+        return null;
+      }
+    })() as any;
+    const rows = Array.isArray(json?.data) ? (json.data as Array<{ linkId?: string }>) : [];
+    const exact = rows.some((r) => r?.linkId === name);
+    if (!exact) missing.push(name);
+  }
+
+  return { missing, skipped: false };
+}
+
 async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string[]) {
   const mapping = cfg.upload?.mapping;
   if (!mapping || mapping.kind !== 'metrics_links') return;
@@ -269,11 +347,10 @@ async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string
         }
         const missing = fileNames.filter((n) => !have.has(n));
         if (missing.length > 0) {
-          throw new Error(
-            `Missing required metrics_links mappings for ${missing.length} file(s).\n` +
-              `Expected link_type="${linkType}" and link_id to match filenames exactly.\n` +
-              missing.map((m) => `- ${m}`).join('\n'),
-          );
+          const api = await validateMappingsViaApi(args, linkType, missing);
+          if (!api.skipped && api.missing.length > 0) {
+            throw missingMappingsError(linkType, api.missing);
+          }
         }
         return;
       } finally {
@@ -282,50 +359,10 @@ async function validateMappings(args: Args, cfg: IngestorYaml, fileNames: string
     }
   }
 
-  const missing: string[] = [];
-  for (const name of fileNames) {
-    const url = `${stripTrailingSlash(args.baseUrl)}/api/metrics/links?linkType=${encodeURIComponent(linkType)}&q=${encodeURIComponent(name)}&limit=500`;
-    const { res, bodyText } = await fetchWithRetry(
-      url,
-      { method: 'GET', headers: buildAuthHeaders(args) },
-      { retries: 20, baseDelayMs: 300 },
-    );
-    if (!res.ok) {
-      // Next dev server can temporarily return HTML 404/500 while recompiling.
-      // In that case, skip validation and let the upload step be the source of truth.
-      if (looksLikeNextTransientHtml(bodyText)) {
-        console.warn(
-          `Warning: skipping mapping validation because ${url} returned ${res.status} during a transient Next build/reload.\n` +
-            `Uploads will still enforce mapping targets server-side.`,
-        );
-        return;
-      }
-      // This usually indicates the app server isn't running (or its dev build is broken),
-      // because this CLI relies on the app's API endpoints.
-      throw new Error(
-        `Mapping validation failed (${res.status}) for ${url}\n` +
-          `Make sure the hit-dashboard web server is running and healthy, then re-run this task.\n` +
-          `Response body:\n${bodyText}`,
-      );
-    }
-    const json = (() => {
-      try {
-        return JSON.parse(bodyText);
-      } catch {
-        return null;
-      }
-    })() as any;
-    const rows = Array.isArray(json?.data) ? (json.data as Array<{ linkId?: string }>) : [];
-    const exact = rows.some((r) => r?.linkId === name);
-    if (!exact) missing.push(name);
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Missing required metrics_links mappings for ${missing.length} file(s).\n` +
-        `Expected link_type="${linkType}" and link_id to match filenames exactly.\n` +
-        missing.map((m) => `- ${m}`).join('\n'),
-    );
+  const api = await validateMappingsViaApi(args, linkType, fileNames);
+  if (api.skipped) return;
+  if (api.missing.length > 0) {
+    throw missingMappingsError(linkType, api.missing);
   }
 }
 
