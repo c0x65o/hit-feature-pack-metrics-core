@@ -18,13 +18,41 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as yaml from 'js-yaml';
 
+function resolveProjectSchemaName(): string {
+  const slug = String(process.env.HIT_PROJECT_SLUG || process.env.NEXT_PUBLIC_HIT_PROJECT_SLUG || '').trim();
+  if (slug) return slug.replace(/-/g, '_');
+  const cwdBase = path.basename(process.cwd() || '').trim();
+  if (cwdBase) return cwdBase.replace(/-/g, '_');
+  return '';
+}
+
 function normalizeDatabaseUrl(raw: string): string {
   // Normalize DATABASE_URL: strip SQLAlchemy driver suffix (e.g., postgresql+psycopg://)
   // node-postgres expects plain postgresql://
-  return String(raw || '')
+  const normalized = String(raw || '')
     .trim()
     .replace(/^postgresql\+\w+:\/\//, 'postgresql://')
     .replace(/^postgres:\/\//, 'postgresql://');
+
+  if (!normalized) return normalized;
+
+  // Ensure search_path is set when using schema-isolated databases.
+  // This keeps CLI validation consistent with app/drizzle schema usage.
+  try {
+    const url = new URL(normalized);
+    const options = url.searchParams.get('options') || '';
+    const hasSearchPath = /search_path[=,]/i.test(options);
+    if (hasSearchPath) return normalized;
+
+    const schemaName = resolveProjectSchemaName();
+    if (!schemaName) return normalized;
+
+    const nextOptions = options ? `${options} -csearch_path=${schemaName},public` : `-csearch_path=${schemaName},public`;
+    url.searchParams.set('options', nextOptions);
+    return url.toString();
+  } catch {
+    return normalized;
+  }
 }
 
 type ServiceTokensFile = Record<string, string>;
