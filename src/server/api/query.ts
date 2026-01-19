@@ -72,6 +72,7 @@ export async function POST(request: NextRequest) {
         db,
         body: body as unknown as ComputedQueryBody,
         catalogEntry: catalogEntry || undefined,
+        request,
       });
       if (computed) {
         if (!computed.ok) return jsonError(computed.error, 400);

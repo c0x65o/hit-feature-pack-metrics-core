@@ -47,6 +47,7 @@ export async function POST(request) {
                 db,
                 body: body,
                 catalogEntry: catalogEntry || undefined,
+                request,
             });
             if (computed) {
                 if (!computed.ok)

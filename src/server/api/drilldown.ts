@@ -230,6 +230,7 @@ export async function POST(request: NextRequest) {
         page: body.page,
         pageSize: body.pageSize,
         catalogEntry: catalogEntry || undefined,
+        request,
       });
       if (computed) {
         if (!computed.ok) return jsonError(computed.error, 400);

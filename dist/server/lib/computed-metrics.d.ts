@@ -4,6 +4,7 @@
  * This module provides fallback support for metrics that are declared in the catalog
  * but not stored as points. Instead, they are computed on-the-fly from source tables.
  */
+import type { NextRequest } from 'next/server';
 export type QueryBody = {
     metricKey: string;
     start?: string;
@@ -41,14 +42,11 @@ export type ComputedDrilldownResult = {
     ok: false;
     error: string;
 };
-/**
- * Try to run a computed metric query.
- * Returns null if the metric is not a computed metric or if computation is not supported.
- */
 export declare function tryRunComputedMetricQuery(args: {
     db: any;
     body: QueryBody;
     catalogEntry?: any;
+    request?: NextRequest;
 }): Promise<ComputedQueryResult | null>;
 /**
  * Try to run a computed metric drilldown query.
@@ -60,5 +58,6 @@ export declare function tryRunComputedMetricDrilldown(args: {
     page: number;
     pageSize: number;
     catalogEntry?: any;
+    request?: NextRequest;
 }): Promise<ComputedDrilldownResult | null>;
 //# sourceMappingURL=computed-metrics.d.ts.map

@@ -1,4 +1,0 @@
--- Feature Pack: metrics-core
--- Initial migration
--- Tables are managed by Drizzle. This file is reserved for extensions or seeds.
--- Currently empty - no universal seeds required for metrics-core.
