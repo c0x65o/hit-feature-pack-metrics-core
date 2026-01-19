@@ -1,13 +1,1 @@
-{
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1768780933111,
-      "tag": "0000_metrics-core_baseline",
-      "breakpoints": true
-    }
-  ]
-}
+{"version":"7","dialect":"postgresql","entries":[]}
